@@ -2974,12 +2974,6 @@ function buildBankPdf(proj){
   doc.text(fmtMoney(calc.grandBuilder), colX.cost, y);
   y += 26;
 
-  if (calc.targetSalePrice || calc.bestCaseSalePrice || calc.worstCaseSalePrice){
-    checkSpace(220);
-    y = drawScenarioCards(y, 'Best / Expected / Worst Case Margin — Cost Summary', null);
-    y += 20;
-  }
-
   doc.setFont(FONT,'italic'); doc.setFontSize(8); doc.setTextColor(140,135,125);
   const disclaimer = 'This document reflects a preliminary cost analysis based on current scope, selections, and market assumptions. ' +
     'Figures are subject to change pending finalized plans, engineering, permitting, and material selections. Prepared for internal use and lender review only.';
