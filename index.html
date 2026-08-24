@@ -1686,6 +1686,11 @@ function renderSummary(calc){
       <div class="sub">${fmtMoney2(pricePerSqft)} / SQFT</div>
     </div>
     <div class="summary-cell">
+      <div class="lbl">Total Cost (Build + Lot)</div>
+      <div class="val">${fmtMoney(calc.allInCost)}</div>
+      <div class="sub">${calc.lotCost > 0 ? `includes ${fmtMoney(calc.lotCost)} lot` : 'no lot cost entered'}</div>
+    </div>
+    <div class="summary-cell">
       <div class="lbl">Max Build Cost${calc.maxBuildCostAuto ? ' (Auto)' : ''}</div>
       <div class="val">${hasMax ? fmtMoney(calc.maxBuildCost) : '—'}</div>
       <div class="sub" style="color:${varianceColor}; font-weight:600;">${varianceLabel}</div>
@@ -1789,48 +1794,49 @@ function renderMarginBar(calc){
     `;
   }
 
-  // Combined stress test: two fully independent, live-editable "cost moves X% / price moves Y%"
-  // scenarios, so you can freely play with the numbers instead of being locked to one fixed swing.
+  // Combined stress test: ONE live-editable "cost moves X% / price moves Y%" playground — since it's
+  // fully adjustable, there's no need for two parallel boxes. Push whatever combo you land on to the
+  // lender PDF as a named, saved snapshot, then change the numbers and push another.
   let stressHtml = '';
   if (calc.targetSalePrice){
     const fmtPct = n => (n > 0 ? '+' : '') + n;
-    const swingCard = (accentClass, letter, s, tagText) => {
-      const mc = marginColor(s.marginPct);
-      return `
-        <div class="scenario-card">
-          <div class="scenario-card-accent ${accentClass}"></div>
-          <div class="scenario-card-body">
-            <div class="scenario-card-title"><span class="sc-name">Cost ${fmtPct(s.costPct)}% / Price ${fmtPct(s.pricePct)}%</span></div>
-            <div class="scenario-card-tag">${tagText}</div>
-            <div class="stress-input-row">
-              <div class="stress-input-field">
-                <label>Cost Change %</label>
-                <input type="number" step="1" value="${s.costPct}" data-stress-scenario="${letter}" data-stress-field="cost">
-              </div>
-              <div class="stress-input-field">
-                <label>Price Change %</label>
-                <input type="number" step="1" value="${s.pricePct}" data-stress-scenario="${letter}" data-stress-field="price">
-              </div>
-            </div>
-            <div class="scenario-card-margin-label">Net Margin</div>
-            <div class="scenario-card-margin-value" style="color:${mc}">${s.marginPct.toFixed(1)}%</div>
-            <div class="scenario-card-margin-sub" style="color:${mc}">${fmtMoney(s.margin)}</div>
-            <div class="scenario-card-divider"></div>
-            <div class="scenario-card-stats-grid">
-              <div class="scenario-card-stat"><div class="lbl">Sales Price</div><div class="val">${fmtMoney(s.salePrice)}</div></div>
-              <div class="scenario-card-stat"><div class="lbl">Realtor Fee</div><div class="val">${fmtMoney(s.realtorFee)}</div></div>
-              <div class="scenario-card-stat"><div class="lbl">Build + Lot Cost</div><div class="val">${fmtMoney(s.cost)}</div></div>
-              <div class="scenario-card-stat"><div class="lbl">vs. Expected Margin</div><div class="val">${(s.marginPct - calc.marginVsCostPct).toFixed(1)} pts</div></div>
-            </div>
-            <button class="btn btn-sm" style="width:100%; margin-top:12px;" data-save-snapshot="${letter}">+ Push to Lender PDF as Snapshot</button>
-          </div>
-        </div>
-      `;
-    };
+    const s = calc.stressScenarioA;
+    const mc = marginColor(s.marginPct);
     const baseMc = marginColor(calc.marginVsCostPct);
 
+    const swingCardHtml = `
+      <div class="scenario-card" style="max-width:420px;">
+        <div class="scenario-card-accent expected"></div>
+        <div class="scenario-card-body">
+          <div class="scenario-card-title"><span class="sc-name">Cost ${fmtPct(s.costPct)}% / Price ${fmtPct(s.pricePct)}%</span></div>
+          <div class="scenario-card-tag">Set any combo you want — try the "bad day" (cost up, price down) or "good day" (cost down, price up) combo, or anything else</div>
+          <div class="stress-input-row">
+            <div class="stress-input-field">
+              <label>Cost Change %</label>
+              <input type="number" step="1" value="${s.costPct}" data-stress-scenario="A" data-stress-field="cost">
+            </div>
+            <div class="stress-input-field">
+              <label>Price Change %</label>
+              <input type="number" step="1" value="${s.pricePct}" data-stress-scenario="A" data-stress-field="price">
+            </div>
+          </div>
+          <div class="scenario-card-margin-label">Net Margin</div>
+          <div class="scenario-card-margin-value" style="color:${mc}">${s.marginPct.toFixed(1)}%</div>
+          <div class="scenario-card-margin-sub" style="color:${mc}">${fmtMoney(s.margin)}</div>
+          <div class="scenario-card-divider"></div>
+          <div class="scenario-card-stats-grid">
+            <div class="scenario-card-stat"><div class="lbl">Sales Price</div><div class="val">${fmtMoney(s.salePrice)}</div></div>
+            <div class="scenario-card-stat"><div class="lbl">Realtor Fee</div><div class="val">${fmtMoney(s.realtorFee)}</div></div>
+            <div class="scenario-card-stat"><div class="lbl">Build + Lot Cost</div><div class="val">${fmtMoney(s.cost)}</div></div>
+            <div class="scenario-card-stat"><div class="lbl">vs. Expected Margin</div><div class="val">${(s.marginPct - calc.marginVsCostPct).toFixed(1)} pts</div></div>
+          </div>
+          <button class="btn btn-sm" style="width:100%; margin-top:12px;" data-save-snapshot="A">+ Push to Lender PDF as Snapshot</button>
+        </div>
+      </div>
+    `;
+
     const savedCard = (snap) => {
-      const mc = marginColor(snap.marginPct);
+      const smc = marginColor(snap.marginPct);
       return `
         <div class="scenario-card">
           <div class="scenario-card-accent expected"></div>
@@ -1838,8 +1844,8 @@ function renderMarginBar(calc){
             <input type="text" class="scenario-snapshot-label" value="${escapeAttr(snap.label)}" data-snapshot-rename="${snap.id}">
             <div class="scenario-card-tag">Cost ${fmtPct(snap.costPct)}% / Price ${fmtPct(snap.pricePct)}% — saved, prints on the lender PDF</div>
             <div class="scenario-card-margin-label">Net Margin</div>
-            <div class="scenario-card-margin-value" style="color:${mc}">${snap.marginPct.toFixed(1)}%</div>
-            <div class="scenario-card-margin-sub" style="color:${mc}">${fmtMoney(snap.margin)}</div>
+            <div class="scenario-card-margin-value" style="color:${smc}">${snap.marginPct.toFixed(1)}%</div>
+            <div class="scenario-card-margin-sub" style="color:${smc}">${fmtMoney(snap.margin)}</div>
             <div class="scenario-card-divider"></div>
             <div class="scenario-card-stats-grid">
               <div class="scenario-card-stat"><div class="lbl">Sales Price</div><div class="val">${fmtMoney(snap.salePrice)}</div></div>
@@ -1867,14 +1873,11 @@ function renderMarginBar(calc){
       <div class="scenario-range" style="margin-top:24px; padding-top:20px;">
         <div class="sr-label" style="margin-bottom:2px;">Stress Test — Play With Cost &amp; Price Together</div>
         <p style="font-size:11.5px; color:var(--gray); margin:4px 0 14px;">
-          Set any cost % and price % you want on each card below — both flex live off your Expected case
+          Set any cost % and price % you want — it flexes live off your Expected case
           (<b style="color:${baseMc}">${calc.marginVsCostPct.toFixed(1)}% margin</b> today). Negative numbers work too.
-          Like a combo? Push it to the lender PDF as a saved scenario — push as many as you want.
+          Like a combo? Push it to the lender PDF as a saved scenario, then change the numbers and push another.
         </p>
-        <div class="scenario-cards">
-          ${swingCard('worst', 'A', calc.stressScenarioA, 'Try the "bad day" combo, or anything else')}
-          ${swingCard('best', 'B', calc.stressScenarioB, 'Try the "good day" combo, or anything else')}
-        </div>
+        ${swingCardHtml}
         ${savedHtml}
       </div>
     `;
@@ -3092,16 +3095,18 @@ function buildBankPdf(proj){
     }
 
     const gap = 14;
-    const cardW = (contentWidth - gap) / 2;
     const cardH = 176;
     const fmtPct = n => (n > 0 ? '+' : '') + n;
 
     for (let row = 0; row < cardsData.length; row += 2){
       checkSpace(cardH + 16);
       const pair = cardsData.slice(row, row+2);
+      const isSingle = pair.length === 1;
+      const cardW = isSingle ? 300 : (contentWidth - gap) / 2;
+      const rowStartX = isSingle ? leftColX + (contentWidth - cardW) / 2 : leftColX;
       pair.forEach((card, i) => {
         const s = card.s;
-        const x = leftColX + i*(cardW+gap);
+        const x = rowStartX + i*(cardW+gap);
         const padX = 13;
 
         doc.setFillColor(card.bg[0], card.bg[1], card.bg[2]);
@@ -3216,8 +3221,7 @@ function buildBankPdf(proj){
       'Stress Test — Cost & Price Move Together',
       `A gut-check on how exposed this deal is if cost and sales price each move by their own %, flexed off the Expected case (${calc.marginVsCostPct.toFixed(1)}% margin today).`,
       [
-        { label: 'Scenario A', s: calc.stressScenarioA, accent:[166,71,60], bg:[252,245,244] },
-        { label: 'Scenario B', s: calc.stressScenarioB, accent:[76,107,79], bg:[244,247,244] }
+        { label: 'Live Scenario', s: calc.stressScenarioA, accent: ACCENT, bg:[250,249,246] }
       ]
     );
     y += 26;
