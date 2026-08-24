@@ -278,7 +278,7 @@ tr.po-not-ready{opacity:0.55;}
 .category-body{}
 .category-block.collapsed .category-body{display:none;}
 
-table.items{width:100%; border-collapse:collapse; font-size:12.5px;}
+table.items{width:100%; border-collapse:collapse; font-size:12.5px; table-layout:fixed;}
 table.items thead th{
   text-align:left; padding:9px 10px; font-size:10.5px; text-transform:uppercase;
   letter-spacing:0.05em; color:var(--gray); border-bottom:1px solid var(--border);
@@ -288,7 +288,7 @@ table.items tbody td{padding:8px 10px; border-bottom:1px solid var(--border); ve
 table.items tbody tr:hover{background:var(--active-bg);}
 table.items tbody tr.needs-input{background:var(--white); border-left:3px solid var(--attn-text);}
 table.items tbody tr.needs-input:hover{background:var(--active-bg);}
-.col-code{color:var(--gray); font-size:11.5px; white-space:nowrap;}
+.col-code{color:var(--gray); font-size:11.5px; overflow-wrap:break-word; word-break:break-word;}
 .col-title input{border:1px solid transparent; background:transparent; font-weight:600; width:100%; padding:4px 6px; border-radius:6px; font-size:12.5px; color:var(--ink);}
 .col-title input:focus{border-color:var(--ink); background:var(--white); outline:none;}
 .mini-input{width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:6px; font-size:12px; background:var(--bg); font-variant-numeric:tabular-nums; color:var(--ink);}
@@ -535,6 +535,7 @@ tr.subtotal-row td{
       <div class="field"><label>Target Sales Price ($)</label><input id="pTargetSale" type="number" min="0" step="1000" placeholder="e.g. 1250000"></div>
       <div class="field"><label>Best Case Sales Price ($)</label><input id="pBestSale" type="number" min="0" step="1000" placeholder="e.g. 1350000"></div>
       <div class="field"><label>Worst Case Sales Price ($)</label><input id="pWorstSale" type="number" min="0" step="1000" placeholder="e.g. 1150000"></div>
+      <div class="field"><label>Stress Test Swing (%)</label><input id="pStressTestPct" type="number" min="0" step="1" value="10" placeholder="e.g. 10"></div>
     </div>
   </div>
 
@@ -1307,7 +1308,7 @@ function newProjectShell(name, sqft){
     id: app.nextProjectId++,
     createdAt: Date.now(),
     status: 'active', // 'active' | 'closed'
-    project: { name: name||'', address:'', date:'', sqft: sqft || 2500, bed:0, bath:0, garage:0, targetSalePrice:'', contingencyPct:10, bestCaseSalePrice:'', worstCaseSalePrice:'', maxBuildCost:'', maxBuildCostAuto:true, lotCost:'', realtorFeePct:6 },
+    project: { name: name||'', address:'', date:'', sqft: sqft || 2500, bed:0, bath:0, garage:0, targetSalePrice:'', contingencyPct:10, bestCaseSalePrice:'', worstCaseSalePrice:'', maxBuildCost:'', maxBuildCostAuto:true, lotCost:'', realtorFeePct:6, stressTestPct:10 },
     items: items,
     scopeNotes: {},
     collapsed: {},
@@ -1419,12 +1420,33 @@ function computeAll(proj){
   const worstCaseVariance = (grandBuilder + contingencyAmount) - maxBuildCost;
   const worstCaseVariancePct = maxBuildCost > 0 ? (worstCaseVariance / maxBuildCost) * 100 : 0;
 
+  // Stress test — a combined "what if cost swings one way AND sales price swings the other way, at
+  // the same time" gut-check, using the Expected case (allInCost + targetSalePrice) as the pivot point.
+  const stressTestPct = Number(proj.project.stressTestPct) || 0;
+  const stressSwing = stressTestPct / 100;
+  const stressCostUpPriceDown = {
+    cost: allInCost * (1 + stressSwing),
+    salePrice: targetSalePrice * (1 - stressSwing)
+  };
+  stressCostUpPriceDown.realtorFee = stressCostUpPriceDown.salePrice * (realtorFeePct / 100);
+  stressCostUpPriceDown.margin = stressCostUpPriceDown.salePrice - stressCostUpPriceDown.realtorFee - stressCostUpPriceDown.cost;
+  stressCostUpPriceDown.marginPct = stressCostUpPriceDown.salePrice > 0 ? (stressCostUpPriceDown.margin / stressCostUpPriceDown.salePrice) * 100 : 0;
+
+  const stressCostDownPriceUp = {
+    cost: allInCost * (1 - stressSwing),
+    salePrice: targetSalePrice * (1 + stressSwing)
+  };
+  stressCostDownPriceUp.realtorFee = stressCostDownPriceUp.salePrice * (realtorFeePct / 100);
+  stressCostDownPriceUp.margin = stressCostDownPriceUp.salePrice - stressCostDownPriceUp.realtorFee - stressCostDownPriceUp.cost;
+  stressCostDownPriceUp.marginPct = stressCostDownPriceUp.salePrice > 0 ? (stressCostDownPriceUp.margin / stressCostDownPriceUp.salePrice) * 100 : 0;
+
   return { coreByCategory, coreProjectTotal, catTotals, grandBuilder, veSavingsTotal, sqft,
     lotCost, realtorFeePct, allInCost, targetSalePrice, targetRealtorFee, marginVsCost, marginVsCostPct,
     contingencyPct, contingencyAmount, bestCaseBuildCost, worstCaseBuildCost,
     bestCaseSalePrice, worstCaseSalePrice, bestCaseRealtorFee, worstCaseRealtorFee,
     bestCaseMargin, bestCaseMarginPct, worstCaseMargin, worstCaseMarginPct,
-    maxBuildCostAuto, maxBuildCost, buildCostVariance, buildCostVariancePct, worstCaseVariance, worstCaseVariancePct };
+    maxBuildCostAuto, maxBuildCost, buildCostVariance, buildCostVariancePct, worstCaseVariance, worstCaseVariancePct,
+    stressTestPct, stressCostUpPriceDown, stressCostDownPriceUp };
 }
 
 // ---------- Dashboard rendering ----------
@@ -1728,6 +1750,48 @@ function renderMarginBar(calc){
     `;
   }
 
+  // Combined stress test: cost swings one way AND sales price swings the other way, at the same time —
+  // a quick gut-check on how exposed the deal is if things move against you (or in your favor) on both sides at once.
+  let stressHtml = '';
+  if (calc.targetSalePrice){
+    const swingCard = (accentClass, name, tag, s) => {
+      const mc = marginColor(s.marginPct);
+      return `
+        <div class="scenario-card">
+          <div class="scenario-card-accent ${accentClass}"></div>
+          <div class="scenario-card-body">
+            <div class="scenario-card-title"><span class="sc-name">${name}</span></div>
+            <div class="scenario-card-tag">${tag}</div>
+            <div class="scenario-card-margin-label">Net Margin</div>
+            <div class="scenario-card-margin-value" style="color:${mc}">${s.marginPct.toFixed(1)}%</div>
+            <div class="scenario-card-margin-sub" style="color:${mc}">${fmtMoney(s.margin)}</div>
+            <div class="scenario-card-divider"></div>
+            <div class="scenario-card-stats-grid">
+              <div class="scenario-card-stat"><div class="lbl">Sales Price</div><div class="val">${fmtMoney(s.salePrice)}</div></div>
+              <div class="scenario-card-stat"><div class="lbl">Realtor Fee</div><div class="val">${fmtMoney(s.realtorFee)}</div></div>
+              <div class="scenario-card-stat"><div class="lbl">Build + Lot Cost</div><div class="val">${fmtMoney(s.cost)}</div></div>
+              <div class="scenario-card-stat"><div class="lbl">vs. Expected Margin</div><div class="val">${(s.marginPct - calc.marginVsCostPct).toFixed(1)} pts</div></div>
+            </div>
+          </div>
+        </div>
+      `;
+    };
+    const baseMc = marginColor(calc.marginVsCostPct);
+    stressHtml = `
+      <div class="scenario-range" style="margin-top:24px; padding-top:20px;">
+        <div class="sr-label" style="margin-bottom:2px;">Combined Stress Test — Cost &amp; Price Move Against Each Other at Once</div>
+        <p style="font-size:11.5px; color:var(--gray); margin:4px 0 14px;">
+          What if cost and sales price each move ${calc.stressTestPct}% — in opposite directions, at the same time? Both scenarios flex off your Expected case
+          (<b style="color:${baseMc}">${calc.marginVsCostPct.toFixed(1)}% margin</b> today).
+        </p>
+        <div class="scenario-cards">
+          ${swingCard('worst', `Cost +${calc.stressTestPct}% / Price &minus;${calc.stressTestPct}%`, 'The bad-day combo — overruns while the market softens', calc.stressCostUpPriceDown)}
+          ${swingCard('best', `Cost &minus;${calc.stressTestPct}% / Price +${calc.stressTestPct}%`, 'The good-day combo — costs come in under and the market is hot', calc.stressCostDownPriceUp)}
+        </div>
+      </div>
+    `;
+  }
+
   el.innerHTML = `
     <div class="scenario-wrap">
       <div class="scenario-head">
@@ -1740,6 +1804,7 @@ function renderMarginBar(calc){
         ${card('worst', 'Worst Case', `Full ${calc.contingencyPct}% contingency spent · low sale price`, calc.worstCaseSalePrice, calc.worstCaseBuildCost, calc.worstCaseRealtorFee, calc.worstCaseMargin, calc.worstCaseMarginPct)}
       </div>
       ${rangeHtml}
+      ${stressHtml}
     </div>
   `;
 }
@@ -1790,7 +1855,7 @@ function renderCategories(proj, calc){
               <th style="width:110px;">Cost Code</th>
               <th style="width:220px;">Title</th>
               <th style="width:70px;">Method</th>
-              <th style="width:150px;">Rate / Amount</th>
+              <th style="width:190px;">Rate / Amount</th>
               <th style="width:110px;" class="num-cell">Cost</th>
               <th style="width:50px;">V-E</th>
               <th style="width:30px;"></th>
@@ -2008,6 +2073,7 @@ function attachEvents(){
   document.getElementById('pContingency').addEventListener('input', e => { current().project.contingencyPct = e.target.value; render(); });
   document.getElementById('pBestSale').addEventListener('input', e => { current().project.bestCaseSalePrice = e.target.value; render(); });
   document.getElementById('pWorstSale').addEventListener('input', e => { current().project.worstCaseSalePrice = e.target.value; render(); });
+  document.getElementById('pStressTestPct').addEventListener('input', e => { current().project.stressTestPct = e.target.value; render(); });
 
   document.getElementById('btnExportBankPdf').addEventListener('click', () => {
     if (!current()) return;
@@ -2086,6 +2152,7 @@ function syncProjectFieldsToInputs(){
   document.getElementById('pContingency').value = proj.project.contingencyPct;
   document.getElementById('pBestSale').value = proj.project.bestCaseSalePrice;
   document.getElementById('pWorstSale').value = proj.project.worstCaseSalePrice;
+  document.getElementById('pStressTestPct').value = proj.project.stressTestPct;
   refreshCrumb();
 }
 
