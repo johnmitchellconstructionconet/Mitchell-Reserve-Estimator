@@ -121,6 +121,12 @@ h1,h2,h3,h4{font-family:var(--app-font); font-weight:700; letter-spacing:-0.01em
 .att-include-toggle{display:flex; align-items:center; gap:6px; font-size:11px; color:var(--gray); white-space:nowrap; cursor:pointer;}
 .att-actions{display:flex; gap:8px; flex-shrink:0;}
 .att-empty{font-size:12.5px; color:var(--gray-light); font-style:italic; padding:6px 0 20px;}
+.att-status-group{margin-bottom:14px;}
+.att-status-head{display:flex; align-items:center; gap:10px; cursor:pointer; padding:8px 4px; user-select:none;}
+.att-status-head .caret{font-size:10px; color:var(--gray); width:12px; display:inline-block;}
+.att-status-head .att-status-name{font-size:12.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--gray);}
+.att-status-head .att-status-count{font-size:11px; font-weight:700; color:var(--white); background:var(--gray-light); border-radius:20px; padding:1px 8px;}
+.att-status-body{padding-left:4px;}
 
 .tabs{display:flex; gap:3px; padding:14px 28px; background:var(--white); border-bottom:1px solid var(--border);}
 .tab{
@@ -390,7 +396,7 @@ tr.subtotal-row td{
   body{background:white;}
   .sidebar, .content-topbar, .tabs, .report-controls, .no-print{display:none !important;}
   #reportView{display:block !important; box-shadow:none; border:none; padding:0; max-width:100%;}
-  .main, #appView, #dashboardView, #poView, #settingsView, #compsView{display:none !important;}
+  .main, #appView, #dashboardView, #poView, #settingsView, #compsView, #financeView{display:none !important;}
   .report-category{page-break-inside:auto;}
   .report-category .allocated{page-break-inside:avoid; break-inside:avoid;}
 }
@@ -490,6 +496,10 @@ tr.subtotal-row td{
       <div class="nav-item" data-tab="comps" id="navComps">
         <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M2 4a1.5 1.5 0 0 1 1.5-1.5h3l1.3 1.5H12.5A1.5 1.5 0 0 1 14 5.5v6A1.5 1.5 0 0 1 12.5 13h-9A1.5 1.5 0 0 1 2 11.5Z" stroke="currentColor" stroke-width="1.3"/></svg>
         Comps &amp; Lots
+      </div>
+      <div class="nav-item" data-tab="finance" id="navFinance">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.3" stroke="currentColor" stroke-width="1.3"/><path d="M5.7 5.5h1.8a1.2 1.2 0 0 1 0 2.4H6.8a1.2 1.2 0 0 0 0 2.4h1.9M7.5 4.6v1M7.5 10.9v1" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+        Interest Calculator
       </div>
     </nav>
 
@@ -691,6 +701,43 @@ tr.subtotal-row td{
 
   <div class="section-label">Potential Lots</div>
   <div id="compsListLot"></div>
+</div>
+
+<div id="financeView" class="main" style="display:none;">
+  <div class="dash-head">
+    <div>
+      <h1>Construction Loan Interest Calculator</h1>
+      <p>Estimates interest cost over the life of the project — you only pay interest on what's actually drawn from the bank, and it keeps accruing on the full balance during any hold period while the home sits waiting to sell.</p>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Loan Details</h2>
+    <div class="grid-info">
+      <div class="field">
+        <label>Loan Amount ($)</label>
+        <input id="finLoanAmount" type="number" min="0" step="1000" placeholder="e.g. 450000">
+      </div>
+      <div class="field"><label>Interest Rate (Annual %)</label><input id="finRatePct" type="number" min="0" step="0.05" placeholder="e.g. 9.5"></div>
+      <div class="field"><label>Origination Fee / Points (%)</label><input id="finOriginationPct" type="number" min="0" step="0.1" placeholder="e.g. 1"></div>
+    </div>
+    <button class="btn btn-sm" id="btnUseTotalCostForLoan" style="margin-top:12px;">Use Total Cost (Build + Lot) as Loan Amount</button>
+  </div>
+
+  <div class="panel">
+    <h2>Draw &amp; Hold Timeline</h2>
+    <p style="color:var(--gray); font-size:12.5px; margin-top:2px; margin-bottom:14px;">
+      Assumes an even, steady draw-down during construction (roughly how most draw schedules average out) — the loan balance ramps from $0 up to the full loan amount across the construction period, then sits fully drawn during the hold.
+    </p>
+    <div class="grid-info">
+      <div class="field"><label>Construction Period (months)</label><input id="finConstructionMonths" type="number" min="0" step="1" placeholder="e.g. 8"></div>
+      <div class="field"><label>Avg. % of Loan Drawn During Construction</label><input id="finAvgDrawPct" type="number" min="0" max="100" step="1" placeholder="e.g. 50"></div>
+      <div class="field"><label>Hold Period After Completion (months)</label><input id="finHoldMonths" type="number" min="0" step="1" placeholder="e.g. 3"></div>
+    </div>
+  </div>
+
+  <div id="financeSummary"></div>
+  <div id="financeSchedule"></div>
 </div>
 
 <div id="settingsView" class="main" style="display:none;">
@@ -1295,6 +1342,11 @@ function hydrateProject(proj){
   if (proj.nextStressSnapshotId === undefined) proj.nextStressSnapshotId = (proj.stressSnapshots.length || 0) + 1;
   if (proj.attachments === undefined) proj.attachments = [];
   if (proj.nextAttachmentId === undefined) proj.nextAttachmentId = (proj.attachments.length || 0) + 1;
+  proj.attachments.forEach(a => { if (a.status === undefined) a.status = 'review'; });
+  if (proj.compsGroupCollapsed === undefined) proj.compsGroupCollapsed = {};
+  if (proj.financing === undefined){
+    proj.financing = { loanAmount: '', interestRatePct: '', originationFeePct: '', constructionMonths: '', avgDrawPct: 50, holdMonths: '' };
+  }
   return proj;
 }
 
@@ -1440,7 +1492,12 @@ function newProjectShell(name, sqft){
     stressSnapshots: [],     // saved "Scenario 1, 2, 3..." stress test snapshots pushed to the lender PDF
     nextStressSnapshotId: 1,
     attachments: [],         // comps & potential lots — PDFs attached for internal use and lender export
-    nextAttachmentId: 1
+    nextAttachmentId: 1,
+    compsGroupCollapsed: {}, // remembers which collapsible status groups are closed, per category+status
+    financing: {             // construction loan interest calculator inputs
+      loanAmount: '', interestRatePct: '', originationFeePct: '',
+      constructionMonths: '', avgDrawPct: 50, holdMonths: ''
+    }
   };
 }
 
@@ -2459,7 +2516,7 @@ function loadProjectFile(e){
 
 // ---------- Tabs ----------
 function switchTab(tab){
-  if ((tab === 'app' || tab === 'report' || tab === 'polist' || tab === 'comps') && !current()){
+  if ((tab === 'app' || tab === 'report' || tab === 'polist' || tab === 'comps' || tab === 'finance') && !current()){
     tab = 'dashboard';
   }
   if (tab === 'dashboard'){ app.activeId = null; } // clear BEFORE checking hasProject below, or the sidebar still thinks a project is open
@@ -2476,6 +2533,7 @@ function switchTab(tab){
   document.getElementById('reportView').style.display = tab==='report' ? 'block' : 'none';
   document.getElementById('poView').style.display = tab==='polist' ? 'block' : 'none';
   document.getElementById('compsView').style.display = tab==='comps' ? 'block' : 'none';
+  document.getElementById('financeView').style.display = tab==='finance' ? 'block' : 'none';
   document.getElementById('settingsView').style.display = tab==='settings' ? 'block' : 'none';
 
   document.getElementById('btnSaveProject').disabled = !current();
@@ -2486,6 +2544,7 @@ function switchTab(tab){
   if (tab === 'report') renderReport();
   if (tab === 'polist') renderPoList();
   if (tab === 'comps') renderAttachments();
+  if (tab === 'finance') renderFinance();
   if (tab === 'settings') renderSettingsView();
 }
 
@@ -2629,7 +2688,7 @@ async function uploadAttachment(file){
   const category = document.getElementById('attCategory').value;
   const name = document.getElementById('attName').value.trim() || file.name;
   const notes = document.getElementById('attNotes').value.trim();
-  const record = { id: proj.nextAttachmentId++, name, category, notes, uploadedAt: Date.now(), sizeBytes: file.size, includeInBankPdf: true };
+  const record = { id: proj.nextAttachmentId++, name, category, notes, uploadedAt: Date.now(), sizeBytes: file.size, includeInBankPdf: true, status: 'review' };
 
   if (sbClient){
     const safeName = file.name.replace(/[^a-z0-9.\-_]+/gi, '_');
@@ -2694,19 +2753,24 @@ async function deleteAttachment(id){
   saveAppState();
 }
 
+const ATT_STATUS_GROUPS = [
+  { key: 'review', label: 'In Review' },
+  { key: 'approved', label: 'Approved' },
+  { key: 'rejected', label: 'Rejected' }
+];
+
 function renderAttachments(){
   const proj = current();
   if (!proj) return;
   updateAttStorageStatus();
 
-  const renderGroup = (containerId, category, emptyText) => {
-    const container = document.getElementById(containerId);
-    const items = proj.attachments.filter(a => a.category === category);
-    if (!items.length){
-      container.innerHTML = `<div class="att-empty">${emptyText}</div>`;
-      return;
-    }
-    container.innerHTML = items.map(att => `
+  const attRowHtml = (att) => {
+    const nextActions = {
+      review:   `<button class="btn btn-sm" data-att-status="${att.id}" data-status-to="approved">Approve</button><button class="btn btn-sm btn-danger" data-att-status="${att.id}" data-status-to="rejected">Reject</button>`,
+      approved: `<button class="btn btn-sm" data-att-status="${att.id}" data-status-to="review">Back to Review</button><button class="btn btn-sm btn-danger" data-att-status="${att.id}" data-status-to="rejected">Reject</button>`,
+      rejected: `<button class="btn btn-sm" data-att-status="${att.id}" data-status-to="review">Back to Review</button><button class="btn btn-sm" data-att-status="${att.id}" data-status-to="approved">Approve</button>`
+    };
+    return `
       <div class="att-row">
         <div class="att-icon">
           <svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M3.5 1.5h6l3 3v10a1 1 0 0 1-1 1h-8a1 1 0 0 1-1-1v-12a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.3"/><path d="M9 1.5v3h3" stroke="currentColor" stroke-width="1.3"/></svg>
@@ -2720,11 +2784,38 @@ function renderAttachments(){
           Include in Bank PDF
         </label>
         <div class="att-actions">
+          ${nextActions[att.status] || nextActions.review}
           <button class="btn btn-sm" data-att-view="${att.id}">View</button>
           <button class="btn btn-sm btn-danger" data-att-delete="${att.id}">Remove</button>
         </div>
       </div>
-    `).join('');
+    `;
+  };
+
+  const renderGroup = (containerId, category, emptyText) => {
+    const container = document.getElementById(containerId);
+    const items = proj.attachments.filter(a => a.category === category);
+    if (!items.length){
+      container.innerHTML = `<div class="att-empty">${emptyText}</div>`;
+      return;
+    }
+    container.innerHTML = ATT_STATUS_GROUPS.map(g => {
+      const groupKey = `${category}_${g.key}`;
+      const groupItems = items.filter(a => (a.status || 'review') === g.key);
+      const isCollapsed = !!proj.compsGroupCollapsed[groupKey];
+      return `
+        <div class="att-status-group">
+          <div class="att-status-head" data-att-group-toggle="${groupKey}">
+            <span class="caret">${isCollapsed ? '&#9654;' : '&#9660;'}</span>
+            <span class="att-status-name">${g.label}</span>
+            <span class="att-status-count">${groupItems.length}</span>
+          </div>
+          ${isCollapsed ? '' : (groupItems.length
+            ? `<div class="att-status-body">${groupItems.map(attRowHtml).join('')}</div>`
+            : `<div class="att-status-body"><div class="att-empty">Nothing here.</div></div>`)}
+        </div>
+      `;
+    }).join('');
   };
 
   renderGroup('compsListComp', 'comp', 'No comps attached yet.');
@@ -2747,6 +2838,26 @@ function attachCompsEvents(){
 
   const compsView = document.getElementById('compsView');
   compsView.addEventListener('click', e => {
+    const groupToggle = e.target.closest('[data-att-group-toggle]');
+    if (groupToggle){
+      const proj = current();
+      const key = groupToggle.dataset.attGroupToggle;
+      proj.compsGroupCollapsed[key] = !proj.compsGroupCollapsed[key];
+      renderAttachments();
+      saveAppStateDebounced();
+      return;
+    }
+    const statusBtn = e.target.closest('[data-att-status]');
+    if (statusBtn){
+      const proj = current();
+      const att = proj.attachments.find(a => a.id === Number(statusBtn.dataset.attStatus));
+      if (att){
+        att.status = statusBtn.dataset.statusTo;
+        renderAttachments();
+        saveAppStateDebounced();
+      }
+      return;
+    }
     const viewBtn = e.target.closest('[data-att-view]');
     if (viewBtn){
       const proj = current();
@@ -2764,6 +2875,162 @@ function attachCompsEvents(){
       const att = proj.attachments.find(a => a.id === Number(includeBox.dataset.attInclude));
       if (att){ att.includeInBankPdf = includeBox.checked; saveAppStateDebounced(); }
     }
+  });
+}
+
+// ---------- Interest Calculator (construction draw loan) ----------
+// Model: interest only accrues on what's actually drawn. During construction, the balance is
+// assumed to ramp up steadily from $0 to the full loan amount (a reasonable average-case
+// approximation for a typical draw schedule) — so the average balance that month is what's used,
+// not the full loan amount. During the post-completion hold (waiting for the home to sell), the
+// full balance sits outstanding every month.
+function computeFinancing(proj){
+  const f = proj.financing;
+  const loanAmount = Number(f.loanAmount) || 0;
+  const ratePct = Number(f.interestRatePct) || 0;
+  const originationPct = Number(f.originationFeePct) || 0;
+  const constructionMonths = Math.max(0, Math.round(Number(f.constructionMonths) || 0));
+  const avgDrawPct = Math.min(100, Math.max(0, Number(f.avgDrawPct) || 0));
+  const holdMonths = Math.max(0, Math.round(Number(f.holdMonths) || 0));
+  const monthlyRate = ratePct / 100 / 12;
+
+  const schedule = [];
+  let cumulative = 0;
+  let constructionInterest = 0;
+
+  for (let i = 1; i <= constructionMonths; i++){
+    // Balance ramps linearly to (loanAmount * avgDrawPct/100) as its ceiling, so "avg % drawn" acts
+    // as a knob on how aggressively draws are pulled — 50% (even ramp) is the sensible default.
+    const endOfMonthBalance = loanAmount * (avgDrawPct/100) * (i / constructionMonths);
+    const startOfMonthBalance = loanAmount * (avgDrawPct/100) * ((i-1) / constructionMonths);
+    const avgBalance = (startOfMonthBalance + endOfMonthBalance) / 2;
+    const interest = avgBalance * monthlyRate;
+    cumulative += interest;
+    constructionInterest += interest;
+    schedule.push({ month: i, phase: 'Construction', balance: avgBalance, interest, cumulative });
+  }
+
+  let holdInterest = 0;
+  for (let i = 1; i <= holdMonths; i++){
+    const interest = loanAmount * monthlyRate;
+    cumulative += interest;
+    holdInterest += interest;
+    schedule.push({ month: constructionMonths + i, phase: 'Hold (Waiting to Sell)', balance: loanAmount, interest, cumulative });
+  }
+
+  const originationFee = loanAmount * (originationPct/100);
+  const totalInterest = constructionInterest + holdInterest;
+  const totalFinancingCost = totalInterest + originationFee;
+  const totalTimelineMonths = constructionMonths + holdMonths;
+
+  return { loanAmount, ratePct, originationPct, constructionMonths, avgDrawPct, holdMonths,
+    schedule, constructionInterest, holdInterest, originationFee, totalInterest, totalFinancingCost, totalTimelineMonths };
+}
+
+function renderFinance(){
+  const proj = current();
+  if (!proj) return;
+
+  document.getElementById('finLoanAmount').value = proj.financing.loanAmount;
+  document.getElementById('finRatePct').value = proj.financing.interestRatePct;
+  document.getElementById('finOriginationPct').value = proj.financing.originationFeePct;
+  document.getElementById('finConstructionMonths').value = proj.financing.constructionMonths;
+  document.getElementById('finAvgDrawPct').value = proj.financing.avgDrawPct;
+  document.getElementById('finHoldMonths').value = proj.financing.holdMonths;
+
+  const fin = computeFinancing(proj);
+  const summaryEl = document.getElementById('financeSummary');
+
+  if (!fin.loanAmount || !fin.ratePct){
+    summaryEl.innerHTML = `
+      <div class="scenario-wrap">
+        <div class="scenario-head">
+          <h3>Interest Summary</h3>
+          <p>Enter a loan amount and interest rate above to see the numbers.</p>
+        </div>
+      </div>
+    `;
+    document.getElementById('financeSchedule').innerHTML = '';
+    return;
+  }
+
+  summaryEl.innerHTML = `
+    <div class="summary-bar">
+      <div class="summary-cell highlight">
+        <div class="lbl">Construction Phase Interest</div>
+        <div class="val">${fmtMoney(fin.constructionInterest)}</div>
+        <div class="sub">${fin.constructionMonths} mo &middot; ${fin.avgDrawPct}% avg. drawn</div>
+      </div>
+      <div class="summary-cell">
+        <div class="lbl">Hold Phase Interest</div>
+        <div class="val">${fmtMoney(fin.holdInterest)}</div>
+        <div class="sub">${fin.holdMonths} mo &middot; full balance outstanding</div>
+      </div>
+      <div class="summary-cell">
+        <div class="lbl">Origination Fee</div>
+        <div class="val">${fmtMoney(fin.originationFee)}</div>
+        <div class="sub">${fin.originationPct || 0}% of loan amount</div>
+      </div>
+      <div class="summary-cell">
+        <div class="lbl">Total Financing Cost</div>
+        <div class="val" style="color:var(--attn-text);">${fmtMoney(fin.totalFinancingCost)}</div>
+        <div class="sub">over ${fin.totalTimelineMonths} months</div>
+      </div>
+    </div>
+  `;
+
+  const scheduleEl = document.getElementById('financeSchedule');
+  if (!fin.schedule.length){
+    scheduleEl.innerHTML = '';
+    return;
+  }
+  scheduleEl.innerHTML = `
+    <div class="panel">
+      <h2>Month-by-Month Schedule</h2>
+      <table class="items">
+        <thead>
+          <tr><th style="width:70px;">Month</th><th>Phase</th><th class="num-cell">Est. Balance</th><th class="num-cell">Interest</th><th class="num-cell">Cumulative</th></tr>
+        </thead>
+        <tbody>
+          ${fin.schedule.map(row => `
+            <tr>
+              <td>${row.month}</td>
+              <td>${row.phase}</td>
+              <td class="num-cell">${fmtMoney(row.balance)}</td>
+              <td class="num-cell">${fmtMoney(row.interest)}</td>
+              <td class="num-cell">${fmtMoney(row.cumulative)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function attachFinanceEvents(){
+  const bindField = (id, key) => {
+    document.getElementById(id).addEventListener('input', e => {
+      const proj = current();
+      if (!proj) return;
+      proj.financing[key] = e.target.value;
+      renderFinance();
+      saveAppStateDebounced();
+    });
+  };
+  bindField('finLoanAmount', 'loanAmount');
+  bindField('finRatePct', 'interestRatePct');
+  bindField('finOriginationPct', 'originationFeePct');
+  bindField('finConstructionMonths', 'constructionMonths');
+  bindField('finAvgDrawPct', 'avgDrawPct');
+  bindField('finHoldMonths', 'holdMonths');
+
+  document.getElementById('btnUseTotalCostForLoan').addEventListener('click', () => {
+    const proj = current();
+    if (!proj) return;
+    const calc = computeAll(proj);
+    proj.financing.loanAmount = Math.round(calc.allInCost);
+    renderFinance();
+    saveAppState();
   });
 }
 
@@ -3858,6 +4125,7 @@ function showAuthGate(){
   document.getElementById('reportView').style.display = 'none';
   document.getElementById('poView').style.display = 'none';
   document.getElementById('compsView').style.display = 'none';
+  document.getElementById('financeView').style.display = 'none';
   document.getElementById('settingsView').style.display = 'none';
 }
 
@@ -4002,14 +4270,43 @@ async function checkAuthAndInit(){
 
 // ---------- Init ----------
 document.addEventListener('DOMContentLoaded', () => {
-  loadAppState();
-  attachEvents();
-  attachPoEvents();
-  attachCompsEvents();
-  attachSettingsEvents();
-  attachAuthEvents();
-  applyCompanySettingsToUI();
-  checkAuthAndInit();
+  // Each step runs in isolation — if one throws (a bug in a newer feature, a missing element,
+  // whatever), it's logged and skipped rather than silently aborting everything after it. This is
+  // exactly the bug class that made saved projects look "deleted" when they were really just never
+  // rendered because an earlier step crashed before checkAuthAndInit() (which renders the dashboard)
+  // ever ran.
+  function safeInit(name, fn){
+    try { fn(); } catch (e) { console.error(`Init step "${name}" failed — continuing with the rest of startup:`, e); }
+  }
+
+  safeInit('loadAppState', loadAppState);
+  safeInit('attachEvents', attachEvents);
+  safeInit('attachPoEvents', attachPoEvents);
+  safeInit('attachCompsEvents', attachCompsEvents);
+  safeInit('attachFinanceEvents', attachFinanceEvents);
+  safeInit('attachSettingsEvents', attachSettingsEvents);
+  safeInit('attachAuthEvents', attachAuthEvents);
+  safeInit('applyCompanySettingsToUI', applyCompanySettingsToUI);
+
+  checkAuthAndInit().catch(e => {
+    console.error('checkAuthAndInit failed — attempting to show the dashboard anyway so saved data is still reachable:', e);
+    safeInit('hideAuthGate fallback', hideAuthGate);
+    safeInit('switchTab fallback', () => switchTab('dashboard'));
+  });
+
+  // Diagnostic safety net: if projects are sitting in localStorage but didn't make it into memory,
+  // say so loudly instead of letting it look like the data was deleted. It wasn't — it just failed
+  // to load this session.
+  try {
+    const raw = localStorage.getItem(APP_STATE_KEY);
+    if (raw){
+      const saved = JSON.parse(raw);
+      if (saved && Array.isArray(saved.projects) && saved.projects.length > 0 && app.projects.length === 0){
+        console.error('Saved project data exists in this browser but did not load into the app this session. Your projects are NOT deleted.');
+        alert('Heads up: this browser has saved project data that failed to load just now (your projects are NOT deleted — they\'re still saved). Please check the browser console for the error, avoid creating new projects until it\'s sorted out, and let Claude know so this can get fixed properly.');
+      }
+    }
+  } catch (e) { /* if this check itself fails, don't let it break anything further */ }
 });
 
 // Belt-and-suspenders: catch anything not explicitly wired above (and the moment right before
