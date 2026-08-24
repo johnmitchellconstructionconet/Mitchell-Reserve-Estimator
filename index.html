@@ -756,11 +756,10 @@ tr.subtotal-row td{
   <div class="panel">
     <h2>Draw &amp; Hold Timeline</h2>
     <p style="color:var(--gray); font-size:12.5px; margin-top:2px; margin-bottom:14px;">
-      Assumes an even, steady draw-down during construction (roughly how most draw schedules average out) — the loan balance ramps from $0 up to the full loan amount across the construction period, then sits fully drawn during the hold.
+      Assumes a steady, even draw-down — the loan balance ramps from $0 up to the full loan amount by the end of construction (draws rarely land exactly evenly in real life, but this gives a reliable average), then sits fully drawn during the hold while the home waits to sell.
     </p>
     <div class="grid-info">
       <div class="field"><label>Construction Period (months)</label><input id="finConstructionMonths" type="number" min="0" step="1" placeholder="e.g. 8"></div>
-      <div class="field"><label>Avg. % of Loan Drawn During Construction</label><input id="finAvgDrawPct" type="number" min="0" max="100" step="1" placeholder="e.g. 50"></div>
       <div class="field"><label>Hold Period After Completion (months)</label><input id="finHoldMonths" type="number" min="0" step="1" placeholder="e.g. 3"></div>
     </div>
   </div>
@@ -1304,6 +1303,11 @@ let app = {
 const APP_STATE_KEY = 'mcd_estimating_app_state_v1';
 
 function saveAppState(){
+  // Bump "last edited" the moment a save is triggered — not just when the remote push finally
+  // fires a couple seconds later. Otherwise a sync pulling in mid-edit could see this project as
+  // "not recently updated" and let an older remote copy overwrite what you just typed.
+  const proj = current();
+  if (proj) proj.updatedAt = Date.now();
   try {
     localStorage.setItem(APP_STATE_KEY, JSON.stringify({
       projects: app.projects,
@@ -1336,7 +1340,7 @@ function hydrateProject(proj){
   proj.attachments.forEach(a => { if (a.status === undefined) a.status = 'review'; });
   if (proj.compsGroupCollapsed === undefined) proj.compsGroupCollapsed = {};
   if (proj.financing === undefined){
-    proj.financing = { loanAmount: '', interestRatePct: '', originationFeePct: '', constructionMonths: '', avgDrawPct: 50, holdMonths: '' };
+    proj.financing = { loanAmount: '', interestRatePct: '', originationFeePct: '', constructionMonths: '', holdMonths: '' };
   }
   if (proj.remoteId === undefined) proj.remoteId = null;
   if (proj.updatedAt === undefined) proj.updatedAt = proj.createdAt || Date.now();
@@ -1594,7 +1598,7 @@ function newProjectShell(name, sqft){
     compsGroupCollapsed: {}, // remembers which collapsible status groups are closed, per category+status
     financing: {             // construction loan interest calculator inputs
       loanAmount: '', interestRatePct: '', originationFeePct: '',
-      constructionMonths: '', avgDrawPct: 50, holdMonths: ''
+      constructionMonths: '', holdMonths: ''
     }
   };
 }
@@ -2853,9 +2857,10 @@ function totalPendingApprovals(){
 
 function renderGlobalNotifyBar(){
   const el = document.getElementById('globalNotifyBar');
-  if (!el) return;
+  if (!el){ console.warn('renderGlobalNotifyBar: #globalNotifyBar element not found in the DOM.'); return; }
   const projectsWithPending = app.projects.filter(p => pendingApprovalCountForProject(p) > 0);
   const total = projectsWithPending.reduce((sum, p) => sum + pendingApprovalCountForProject(p), 0);
+  console.log(`[notify] checked ${app.projects.length} project(s); ${total} pending across ${projectsWithPending.length}. Remote counts map:`, pendingApprovalCounts);
 
   if (total <= 0){
     el.classList.add('hidden');
@@ -3198,7 +3203,6 @@ function computeFinancing(proj){
   const ratePct = Number(f.interestRatePct) || 0;
   const originationPct = Number(f.originationFeePct) || 0;
   const constructionMonths = Math.max(0, Math.round(Number(f.constructionMonths) || 0));
-  const avgDrawPct = Math.min(100, Math.max(0, Number(f.avgDrawPct) || 0));
   const holdMonths = Math.max(0, Math.round(Number(f.holdMonths) || 0));
   const monthlyRate = ratePct / 100 / 12;
 
@@ -3207,10 +3211,11 @@ function computeFinancing(proj){
   let constructionInterest = 0;
 
   for (let i = 1; i <= constructionMonths; i++){
-    // Balance ramps linearly to (loanAmount * avgDrawPct/100) as its ceiling, so "avg % drawn" acts
-    // as a knob on how aggressively draws are pulled — 50% (even ramp) is the sensible default.
-    const endOfMonthBalance = loanAmount * (avgDrawPct/100) * (i / constructionMonths);
-    const startOfMonthBalance = loanAmount * (avgDrawPct/100) * ((i-1) / constructionMonths);
+    // Balance ramps linearly from $0 to the full loan amount by the end of construction — real draw
+    // schedules are never perfectly even, but by completion the loan is fully drawn either way, so
+    // this gives a reliable average without needing a hard-to-pin-down "how much is out right now" input.
+    const endOfMonthBalance = loanAmount * (i / constructionMonths);
+    const startOfMonthBalance = loanAmount * ((i-1) / constructionMonths);
     const avgBalance = (startOfMonthBalance + endOfMonthBalance) / 2;
     const interest = avgBalance * monthlyRate;
     cumulative += interest;
@@ -3231,7 +3236,7 @@ function computeFinancing(proj){
   const totalFinancingCost = totalInterest + originationFee;
   const totalTimelineMonths = constructionMonths + holdMonths;
 
-  return { loanAmount, ratePct, originationPct, constructionMonths, avgDrawPct, holdMonths,
+  return { loanAmount, ratePct, originationPct, constructionMonths, holdMonths,
     schedule, constructionInterest, holdInterest, originationFee, totalInterest, totalFinancingCost, totalTimelineMonths };
 }
 
@@ -3243,7 +3248,6 @@ function renderFinance(){
   document.getElementById('finRatePct').value = proj.financing.interestRatePct;
   document.getElementById('finOriginationPct').value = proj.financing.originationFeePct;
   document.getElementById('finConstructionMonths').value = proj.financing.constructionMonths;
-  document.getElementById('finAvgDrawPct').value = proj.financing.avgDrawPct;
   document.getElementById('finHoldMonths').value = proj.financing.holdMonths;
 
   const fin = computeFinancing(proj);
@@ -3267,7 +3271,7 @@ function renderFinance(){
       <div class="summary-cell highlight">
         <div class="lbl">Construction Phase Interest</div>
         <div class="val">${fmtMoney(fin.constructionInterest)}</div>
-        <div class="sub">${fin.constructionMonths} mo &middot; ${fin.avgDrawPct}% avg. drawn</div>
+        <div class="sub">${fin.constructionMonths} mo &middot; ramping to full draw</div>
       </div>
       <div class="summary-cell">
         <div class="lbl">Hold Phase Interest</div>
@@ -3329,7 +3333,6 @@ function attachFinanceEvents(){
   bindField('finRatePct', 'interestRatePct');
   bindField('finOriginationPct', 'originationFeePct');
   bindField('finConstructionMonths', 'constructionMonths');
-  bindField('finAvgDrawPct', 'avgDrawPct');
   bindField('finHoldMonths', 'holdMonths');
 
   document.getElementById('btnUseTotalCostForLoan').addEventListener('click', () => {
@@ -4602,6 +4605,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   safeInit('loadAppState', loadAppState);
+  safeInit('renderGlobalNotifyBar (initial, local data only)', renderGlobalNotifyBar);
   safeInit('attachEvents', attachEvents);
   safeInit('attachPoEvents', attachPoEvents);
   safeInit('attachCompsEvents', attachCompsEvents);
@@ -4638,16 +4642,17 @@ setInterval(saveAppState, 5000);
 
 // Auto-sync with the team in the background — no manual "Sync Now" click required. Only refreshes
 // the dashboard's own display when you're actually looking at it, so it never yanks you around.
-// The notification bar itself updates regardless of which screen is open.
+// The notification bar itself updates regardless of which screen is open, even without Supabase
+// connected (in which case it just re-checks local data).
 setInterval(() => {
-  if (!sbClient) return;
+  if (!sbClient){ renderGlobalNotifyBar(); return; }
   Promise.all([pullProjectsFromRemote(), refreshPendingApprovalCounts()]).then(() => {
     if (document.getElementById('dashboardView') && document.getElementById('dashboardView').style.display !== 'none'){
       renderDashboard();
     }
     renderGlobalNotifyBar();
   });
-}, 20000);
+}, 8000);
 
 </script>
 
