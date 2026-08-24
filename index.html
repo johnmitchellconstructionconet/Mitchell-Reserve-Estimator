@@ -521,7 +521,14 @@ tr.subtotal-row td{
       plus a contingency to buffer the build cost and a sales price range — to see your true net margin under best, expected, and worst-case conditions.
     </p>
     <div class="grid-info">
-      <div class="field"><label>Max Build Cost ($)</label><input id="pMaxBuildCost" type="number" min="0" step="1000" placeholder="e.g. 450000"></div>
+      <div class="field">
+        <label>Max Build Cost ($)</label>
+        <input id="pMaxBuildCost" type="number" min="0" step="1000" placeholder="e.g. 450000">
+        <label style="display:flex; align-items:center; gap:6px; margin-top:6px; text-transform:none; font-weight:500; letter-spacing:0; color:var(--gray); font-size:11.5px; cursor:pointer;">
+          <input type="checkbox" id="pMaxBuildCostAuto" style="width:auto; margin:0;" checked>
+          Auto (Cost + Contingency)
+        </label>
+      </div>
       <div class="field"><label>Lot / Land Cost ($)</label><input id="pLotCost" type="number" min="0" step="1000" placeholder="e.g. 85000"></div>
       <div class="field"><label>Realtor Fee (%)</label><input id="pRealtorFeePct" type="number" min="0" step="0.1" value="6" placeholder="e.g. 6"></div>
       <div class="field"><label>Contingency (%)</label><input id="pContingency" type="number" min="0" step="0.5" value="10" placeholder="e.g. 10"></div>
@@ -1300,7 +1307,7 @@ function newProjectShell(name, sqft){
     id: app.nextProjectId++,
     createdAt: Date.now(),
     status: 'active', // 'active' | 'closed'
-    project: { name: name||'', address:'', date:'', sqft: sqft || 2500, bed:0, bath:0, garage:0, targetSalePrice:'', contingencyPct:10, bestCaseSalePrice:'', worstCaseSalePrice:'', maxBuildCost:'', lotCost:'', realtorFeePct:6 },
+    project: { name: name||'', address:'', date:'', sqft: sqft || 2500, bed:0, bath:0, garage:0, targetSalePrice:'', contingencyPct:10, bestCaseSalePrice:'', worstCaseSalePrice:'', maxBuildCost:'', maxBuildCostAuto:true, lotCost:'', realtorFeePct:6 },
     items: items,
     scopeNotes: {},
     collapsed: {},
@@ -1402,8 +1409,11 @@ function computeAll(proj){
   const worstCaseMargin = worstCaseSalePrice - worstCaseRealtorFee - worstCaseBuildCost;
   const worstCaseMarginPct = worstCaseSalePrice > 0 ? (worstCaseMargin / worstCaseSalePrice) * 100 : 0;
 
-  // Max Build Cost ceiling — construction cost only (excludes lot), how the current estimate (and worst case) compares to a hard budget cap
-  const maxBuildCost = Number(proj.project.maxBuildCost) || 0;
+  // Max Build Cost ceiling — construction cost only (excludes lot). Auto-populates from Total Builder
+  // Cost + Contingency unless the user has switched it to a manually-set ceiling (e.g. a loan cap).
+  const maxBuildCostAuto = proj.project.maxBuildCostAuto !== false;
+  const maxBuildCost = maxBuildCostAuto ? (grandBuilder + contingencyAmount) : (Number(proj.project.maxBuildCost) || 0);
+  proj.project.maxBuildCost = maxBuildCost; // keep the stored field in sync so the input reflects it
   const buildCostVariance = grandBuilder - maxBuildCost;
   const buildCostVariancePct = maxBuildCost > 0 ? (buildCostVariance / maxBuildCost) * 100 : 0;
   const worstCaseVariance = (grandBuilder + contingencyAmount) - maxBuildCost;
@@ -1414,7 +1424,7 @@ function computeAll(proj){
     contingencyPct, contingencyAmount, bestCaseBuildCost, worstCaseBuildCost,
     bestCaseSalePrice, worstCaseSalePrice, bestCaseRealtorFee, worstCaseRealtorFee,
     bestCaseMargin, bestCaseMarginPct, worstCaseMargin, worstCaseMarginPct,
-    maxBuildCost, buildCostVariance, buildCostVariancePct, worstCaseVariance, worstCaseVariancePct };
+    maxBuildCostAuto, maxBuildCost, buildCostVariance, buildCostVariancePct, worstCaseVariance, worstCaseVariancePct };
 }
 
 // ---------- Dashboard rendering ----------
@@ -1615,7 +1625,7 @@ function renderSummary(calc){
       <div class="sub">${fmtMoney2(pricePerSqft)} / SQFT</div>
     </div>
     <div class="summary-cell">
-      <div class="lbl">Max Build Cost</div>
+      <div class="lbl">Max Build Cost${calc.maxBuildCostAuto ? ' (Auto)' : ''}</div>
       <div class="val">${hasMax ? fmtMoney(calc.maxBuildCost) : '—'}</div>
       <div class="sub" style="color:${varianceColor}; font-weight:600;">${varianceLabel}</div>
     </div>
@@ -1988,6 +1998,10 @@ function attachEvents(){
   document.getElementById('pGarage').addEventListener('input', e => { current().project.garage = e.target.value; saveAppStateDebounced(); });
   document.getElementById('pSqft').addEventListener('input', e => { current().project.sqft = Number(e.target.value)||0; render(); });
   document.getElementById('pMaxBuildCost').addEventListener('input', e => { current().project.maxBuildCost = e.target.value; render(); });
+  document.getElementById('pMaxBuildCostAuto').addEventListener('change', e => {
+    current().project.maxBuildCostAuto = e.target.checked;
+    render();
+  });
   document.getElementById('pLotCost').addEventListener('input', e => { current().project.lotCost = e.target.value; render(); });
   document.getElementById('pRealtorFeePct').addEventListener('input', e => { current().project.realtorFeePct = e.target.value; render(); });
   document.getElementById('pTargetSale').addEventListener('input', e => { current().project.targetSalePrice = e.target.value; render(); });
@@ -2064,6 +2078,8 @@ function syncProjectFieldsToInputs(){
   document.getElementById('pBath').value = proj.project.bath;
   document.getElementById('pGarage').value = proj.project.garage;
   document.getElementById('pMaxBuildCost').value = proj.project.maxBuildCost;
+  document.getElementById('pMaxBuildCostAuto').checked = proj.project.maxBuildCostAuto !== false;
+  document.getElementById('pMaxBuildCost').disabled = proj.project.maxBuildCostAuto !== false;
   document.getElementById('pLotCost').value = proj.project.lotCost;
   document.getElementById('pRealtorFeePct').value = proj.project.realtorFeePct;
   document.getElementById('pTargetSale').value = proj.project.targetSalePrice;
@@ -2262,6 +2278,12 @@ function render(){
   renderSummary(calc);
   renderMarginBar(calc);
   renderCategories(proj, calc);
+  // Auto mode: reflect the live-computed value in the field and keep it locked while auto is on.
+  const maxBuildCostInput = document.getElementById('pMaxBuildCost');
+  if (maxBuildCostInput){
+    maxBuildCostInput.disabled = calc.maxBuildCostAuto;
+    if (calc.maxBuildCostAuto) maxBuildCostInput.value = Math.round(calc.maxBuildCost);
+  }
   saveAppState();
 }
 
