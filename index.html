@@ -3042,6 +3042,81 @@ async function deleteAttachment(id){
   renderAttachments();
 }
 
+// Lets you fix a typo'd name, tighten up notes, re-file a comp as a lot (or vice versa), or update
+// a link — without having to delete and re-add the whole entry. The uploaded PDF file itself isn't
+// replaceable here; remove and re-upload if the actual document needs to change.
+function openEditAttachmentModal(id){
+  const att = attachmentsCache.find(a => String(a.id) === String(id));
+  if (!att) return;
+
+  const root = document.getElementById('modalRoot');
+  root.innerHTML = `
+    <div class="modal-overlay" id="modalOverlay">
+      <div class="modal modal-lg">
+        <h3>Edit ${att.category === 'lot' ? 'Potential Lot' : 'Comp'}</h3>
+        <div class="field" style="margin-bottom:12px;">
+          <label>Category</label>
+          <select id="editAttCategory">
+            <option value="comp" ${att.category==='comp'?'selected':''}>Comp (Comparable Sale)</option>
+            <option value="lot" ${att.category==='lot'?'selected':''}>Potential Lot</option>
+          </select>
+        </div>
+        <div class="field" style="margin-bottom:12px;">
+          <label>Name / Address</label>
+          <input id="editAttName" type="text" value="${escapeAttr(att.name)}">
+        </div>
+        <div class="field" style="margin-bottom:12px;">
+          <label>Notes</label>
+          <input id="editAttNotes" type="text" value="${escapeAttr(att.notes || '')}" placeholder="Optional — sqft, sale date, asking price, etc.">
+        </div>
+        ${att.link ? `
+        <div class="field" style="margin-bottom:4px;">
+          <label>Link</label>
+          <input id="editAttLink" type="url" value="${escapeAttr(att.link)}">
+        </div>
+        ` : `<p style="font-size:11.5px; color:var(--gray); margin:-4px 0 0;">This entry has an uploaded PDF attached — to replace the file itself, remove this and upload a new one.</p>`}
+        <div class="modal-actions">
+          <button class="btn" id="modalCancel">Cancel</button>
+          <button class="btn btn-gold" id="modalSaveAttEdit">Save Changes</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('modalCancel').addEventListener('click', closeModal);
+  document.getElementById('modalOverlay').addEventListener('click', (e) => { if (e.target.id === 'modalOverlay') closeModal(); });
+  document.getElementById('modalSaveAttEdit').addEventListener('click', () => saveAttachmentEdits(id));
+}
+
+async function saveAttachmentEdits(id){
+  const proj = current();
+  const att = attachmentsCache.find(a => String(a.id) === String(id));
+  if (!att) return;
+
+  const updates = {
+    category: document.getElementById('editAttCategory').value,
+    name: document.getElementById('editAttName').value.trim() || att.name,
+    notes: document.getElementById('editAttNotes').value.trim()
+  };
+  const linkInput = document.getElementById('editAttLink');
+  if (linkInput) updates.link = linkInput.value.trim();
+
+  if (att.source === 'remote' && sbClient){
+    const remotePayload = { category: updates.category, name: updates.name, notes: updates.notes };
+    if (linkInput) remotePayload.link = updates.link;
+    const { error } = await sbClient.from(ATTACHMENTS_TABLE).update(remotePayload).eq('id', id);
+    if (error){ alert('Could not save changes: ' + error.message); return; }
+  } else {
+    const localAtt = proj.attachments.find(a => a.id === id);
+    if (localAtt){
+      Object.assign(localAtt, updates);
+      saveAppStateDebounced();
+    }
+  }
+  closeModal();
+  renderAttachments();
+}
+
 async function setAttachmentStatus(id, status){
   const proj = current();
   const att = attachmentsCache.find(a => String(a.id) === String(id));
@@ -3125,6 +3200,7 @@ async function renderAttachments(){
         <div class="att-actions">
           ${nextActions[att.status] || nextActions.review}
           <button class="btn btn-sm" data-att-view="${att.id}">${att.link ? 'Open Link' : 'View'}</button>
+          <button class="btn btn-sm" data-att-edit="${att.id}">Edit</button>
           <button class="btn btn-sm btn-danger" data-att-delete="${att.id}">Remove</button>
         </div>
       </div>
@@ -3197,6 +3273,8 @@ function attachCompsEvents(){
       if (att) viewAttachment(att);
       return;
     }
+    const editBtn = e.target.closest('[data-att-edit]');
+    if (editBtn){ openEditAttachmentModal(editBtn.dataset.attEdit); return; }
     const delBtn = e.target.closest('[data-att-delete]');
     if (delBtn){ deleteAttachment(delBtn.dataset.attDelete); }
   });
