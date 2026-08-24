@@ -1151,6 +1151,31 @@ let app = {
   nextProjectId: 1
 };
 
+// ---------- Persistence for app.projects (localStorage — survives page reloads AND file/deploy updates,
+// since localStorage is tied to the browser + origin, not to the specific HTML file bytes) ----------
+const APP_STATE_KEY = 'mcd_estimating_app_state_v1';
+
+function saveAppState(){
+  try {
+    localStorage.setItem(APP_STATE_KEY, JSON.stringify({
+      projects: app.projects,
+      nextProjectId: app.nextProjectId
+    }));
+  } catch (e) { /* storage unavailable (private browsing, quota, etc) — edits just won't persist across reloads */ }
+}
+
+function loadAppState(){
+  try {
+    const raw = localStorage.getItem(APP_STATE_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (parsed && Array.isArray(parsed.projects)){
+      app.projects = parsed.projects;
+      app.nextProjectId = parsed.nextProjectId || (Math.max(0, ...parsed.projects.map(p=>p.id||0)) + 1);
+    }
+  } catch (e) { /* corrupted or unreadable — start fresh rather than crash */ }
+}
+
 // ---------- Company Settings (persisted in this browser via localStorage — not per project) ----------
 const COMPANY_SETTINGS_KEY = 'mcd_estimating_company_settings_v1';
 const DEFAULT_COMPANY_SETTINGS = {
@@ -1391,6 +1416,7 @@ function computeAll(proj){
 let dashboardStatusFilter = 'active';
 
 function renderDashboard(){
+  saveAppState();
   const wrap = document.getElementById('projectGridWrap');
   const filterEl = document.getElementById('dashFilter');
 
@@ -1868,6 +1894,13 @@ function patchComputedValues(){
       veSavEl.textContent = diffLabel;
     }
   });
+  saveAppStateDebounced();
+}
+
+let _saveAppStateTimer = null;
+function saveAppStateDebounced(){
+  clearTimeout(_saveAppStateTimer);
+  _saveAppStateTimer = setTimeout(saveAppState, 500);
 }
 
 // ---------- Event delegation ----------
@@ -1942,12 +1975,12 @@ function attachEvents(){
     }
   });
 
-  document.getElementById('pName').addEventListener('input', e => { current().project.name = e.target.value; refreshCrumb(); });
-  document.getElementById('pAddress').addEventListener('input', e => { current().project.address = e.target.value; });
-  document.getElementById('pDate').addEventListener('input', e => { current().project.date = e.target.value; });
-  document.getElementById('pBed').addEventListener('input', e => { current().project.bed = e.target.value; });
-  document.getElementById('pBath').addEventListener('input', e => { current().project.bath = e.target.value; });
-  document.getElementById('pGarage').addEventListener('input', e => { current().project.garage = e.target.value; });
+  document.getElementById('pName').addEventListener('input', e => { current().project.name = e.target.value; refreshCrumb(); saveAppStateDebounced(); });
+  document.getElementById('pAddress').addEventListener('input', e => { current().project.address = e.target.value; saveAppStateDebounced(); });
+  document.getElementById('pDate').addEventListener('input', e => { current().project.date = e.target.value; saveAppStateDebounced(); });
+  document.getElementById('pBed').addEventListener('input', e => { current().project.bed = e.target.value; saveAppStateDebounced(); });
+  document.getElementById('pBath').addEventListener('input', e => { current().project.bath = e.target.value; saveAppStateDebounced(); });
+  document.getElementById('pGarage').addEventListener('input', e => { current().project.garage = e.target.value; saveAppStateDebounced(); });
   document.getElementById('pSqft').addEventListener('input', e => { current().project.sqft = Number(e.target.value)||0; render(); });
   document.getElementById('pMaxBuildCost').addEventListener('input', e => { current().project.maxBuildCost = e.target.value; render(); });
   document.getElementById('pLotCost').addEventListener('input', e => { current().project.lotCost = e.target.value; render(); });
@@ -2201,6 +2234,7 @@ function renderReport(){
   document.querySelectorAll('[data-scope-cat]').forEach(ta => {
     ta.addEventListener('input', e => {
       current().scopeNotes[e.target.dataset.scopeCat] = e.target.value;
+      saveAppStateDebounced();
     });
   });
 }
@@ -2223,6 +2257,7 @@ function render(){
   renderSummary(calc);
   renderMarginBar(calc);
   renderCategories(proj, calc);
+  saveAppState();
 }
 
 // ---------- Bid List & Purchase Orders ----------
@@ -2241,6 +2276,7 @@ function poAmount(row, proj){
 function renderPoList(){
   const proj = current();
   if (!proj) return;
+  saveAppState();
   const tbody = document.getElementById('poTableBody');
   const rows = proj.poList;
 
@@ -2428,6 +2464,7 @@ function attachPoEvents(){
     if (e.target.dataset.poStatus){
       const row = proj.poList.find(r=>r.id===Number(e.target.dataset.poStatus));
       row.status = e.target.value;
+      saveAppStateDebounced();
     }
     if (e.target.dataset.poSelect){
       const row = proj.poList.find(r=>r.id===Number(e.target.dataset.poSelect));
@@ -2441,6 +2478,7 @@ function attachPoEvents(){
       const proj = current();
       const row = proj.poList.find(r=>r.id===Number(e.target.dataset.poNotes));
       row.notes = e.target.value; // no recompute needed — safe to leave DOM untouched
+      saveAppStateDebounced();
     }
   });
 
@@ -3293,6 +3331,7 @@ async function checkAuthAndInit(){
 
 // ---------- Init ----------
 document.addEventListener('DOMContentLoaded', () => {
+  loadAppState();
   attachEvents();
   attachPoEvents();
   attachSettingsEvents();
@@ -3300,6 +3339,11 @@ document.addEventListener('DOMContentLoaded', () => {
   applyCompanySettingsToUI();
   checkAuthAndInit();
 });
+
+// Belt-and-suspenders: catch anything not explicitly wired above (and the moment right before
+// the tab/window closes), so a project is never lost.
+window.addEventListener('beforeunload', saveAppState);
+setInterval(saveAppState, 5000);
 
 </script>
 
