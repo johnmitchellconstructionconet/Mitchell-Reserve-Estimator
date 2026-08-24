@@ -1345,7 +1345,10 @@ function hydrateProject(proj){
   if (proj.nextStressSnapshotId === undefined) proj.nextStressSnapshotId = (proj.stressSnapshots.length || 0) + 1;
   if (proj.attachments === undefined) proj.attachments = [];
   if (proj.nextAttachmentId === undefined) proj.nextAttachmentId = (proj.attachments.length || 0) + 1;
-  proj.attachments.forEach(a => { if (a.status === undefined) a.status = 'review'; });
+  proj.attachments.forEach(a => {
+    if (a.status === undefined) a.status = 'review';
+    if (a.documents === undefined) a.documents = [];
+  });
   if (proj.compsGroupCollapsed === undefined) proj.compsGroupCollapsed = {};
   if (proj.financing === undefined){
     proj.financing = { loanAmount: '', interestRatePct: '', originationFeePct: '', constructionMonths: '', holdMonths: '' };
@@ -2926,6 +2929,7 @@ function normalizeRemoteAttachment(row){
     id: row.id, name: row.name, category: row.category, notes: row.notes || '', link: row.link || '',
     storagePath: row.storage_path || '', sizeBytes: row.size_bytes || 0, status: row.status || 'review',
     includeInBankPdf: row.include_in_bank_pdf !== false, uploadedAt: new Date(row.created_at).getTime(),
+    documents: Array.isArray(row.documents) ? row.documents : [],
     source: 'remote'
   };
 }
@@ -2961,7 +2965,7 @@ async function uploadAttachment(file){
     alert(`This file is ${fmtBytes(file.size)}. Without shared Supabase Storage active, local files are capped at ${fmtBytes(MAX_LOCAL_ATTACHMENT_BYTES)}. Connect Supabase (and name this project) for larger files and team-wide visibility.`);
     return;
   }
-  const record = { id: proj.nextAttachmentId++, name, category, notes, uploadedAt: Date.now(), sizeBytes: file.size, includeInBankPdf: true, status: 'review' };
+  const record = { id: proj.nextAttachmentId++, name, category, notes, uploadedAt: Date.now(), sizeBytes: file.size, includeInBankPdf: true, status: 'review', documents: [] };
   const reader = new FileReader();
   reader.onload = (e) => {
     record.fileDataUrl = e.target.result;
@@ -2995,7 +2999,7 @@ async function addAttachmentLink(){
     return;
   }
 
-  const record = { id: proj.nextAttachmentId++, name, category, notes, link, uploadedAt: Date.now(), includeInBankPdf: true, status: 'review' };
+  const record = { id: proj.nextAttachmentId++, name, category, notes, link, uploadedAt: Date.now(), includeInBankPdf: true, status: 'review', documents: [] };
   proj.attachments.push(record);
   document.getElementById('attLinkInput').value = '';
   finishAttachmentUpload();
@@ -3049,11 +3053,22 @@ function openEditAttachmentModal(id){
   const att = attachmentsCache.find(a => String(a.id) === String(id));
   if (!att) return;
 
+  const detailBits = [
+    `Status: ${att.status === 'approved' ? 'Approved' : att.status === 'rejected' ? 'Rejected' : 'In Review'}`,
+    `Added ${new Date(att.uploadedAt).toLocaleDateString()}`,
+    att.source === 'remote' ? 'Shared with your team' : (att.storagePath ? 'Cloud storage' : 'Local to this browser')
+  ];
+  const currentFileLabel = att.link
+    ? 'No PDF attached — this is a link-only entry.'
+    : `Current file: ${fmtBytes(att.sizeBytes)}${att.storagePath ? '' : ' (stored locally)'}`;
+
   const root = document.getElementById('modalRoot');
   root.innerHTML = `
     <div class="modal-overlay" id="modalOverlay">
       <div class="modal modal-lg">
-        <h3>Edit ${att.category === 'lot' ? 'Potential Lot' : 'Comp'}</h3>
+        <h3>${att.category === 'lot' ? 'Potential Lot' : 'Comp'} Details</h3>
+        <p style="font-size:11.5px; color:var(--gray); margin:-8px 0 14px;">${detailBits.join(' · ')}</p>
+
         <div class="field" style="margin-bottom:12px;">
           <label>Category</label>
           <select id="editAttCategory">
@@ -3067,14 +3082,54 @@ function openEditAttachmentModal(id){
         </div>
         <div class="field" style="margin-bottom:12px;">
           <label>Notes</label>
-          <input id="editAttNotes" type="text" value="${escapeAttr(att.notes || '')}" placeholder="Optional — sqft, sale date, asking price, etc.">
+          <textarea id="editAttNotes" style="width:100%; min-height:70px; padding:9px 11px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:13.5px; background:var(--bg); color:var(--ink); resize:vertical;" placeholder="Optional — sqft, sale date, asking price, etc.">${escapeAttr(att.notes || '')}</textarea>
         </div>
-        ${att.link ? `
-        <div class="field" style="margin-bottom:4px;">
+        <div class="field" style="margin-bottom:16px;">
           <label>Link</label>
-          <input id="editAttLink" type="url" value="${escapeAttr(att.link)}">
+          <input id="editAttLink" type="url" value="${escapeAttr(att.link || '')}" placeholder="https://... (optional — MLS, Zillow, Google Drive, etc.)">
         </div>
-        ` : `<p style="font-size:11.5px; color:var(--gray); margin:-4px 0 0;">This entry has an uploaded PDF attached — to replace the file itself, remove this and upload a new one.</p>`}
+
+        <div class="field" style="margin-bottom:4px; padding-top:12px; border-top:1px solid var(--border);">
+          <label>PDF File</label>
+          <div id="editAttFileLabel" style="font-size:12px; color:var(--gray); margin-bottom:8px;">${currentFileLabel}</div>
+          <button class="btn btn-sm" id="btnChooseEditAttFile" type="button">Choose New PDF to Replace It</button>
+          <input type="file" id="editAttFileInput" class="file-input" accept="application/pdf">
+        </div>
+
+        <div class="field" style="margin-bottom:4px; padding-top:16px; border-top:1px solid var(--border);">
+          <label>Supporting Documents (Covenants, Restrictions, Surveys, etc.)</label>
+          <p style="font-size:11.5px; color:var(--gray); margin:2px 0 10px;">Attach as many additional PDFs or links as this comp/lot needs.</p>
+          <div id="supportingDocsList" style="margin-bottom:10px;">
+            ${(att.documents || []).length ? (att.documents || []).map(doc => `
+              <div class="att-row" style="padding:9px 12px;">
+                <div class="att-icon" style="width:28px; height:28px;">
+                  ${doc.link
+                    ? `<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M6.5 9.5 9.5 6.5M6 4.5 4.2 6.3a2.5 2.5 0 0 0 3.5 3.5L9.5 8M10 11.5l1.8-1.8a2.5 2.5 0 0 0-3.5-3.5L6.5 8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>`
+                    : `<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M3.5 1.5h6l3 3v10a1 1 0 0 1-1 1h-8a1 1 0 0 1-1-1v-12a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.3"/><path d="M9 1.5v3h3" stroke="currentColor" stroke-width="1.3"/></svg>`}
+                </div>
+                <div class="att-info">
+                  <div class="att-name" style="font-size:12.5px;">${escapeAttr(doc.name)}</div>
+                  <div class="att-meta">${doc.link ? 'Link' : fmtBytes(doc.sizeBytes)} · ${new Date(doc.uploadedAt).toLocaleDateString()}</div>
+                </div>
+                <div class="att-actions">
+                  <button class="btn btn-sm" data-doc-view="${doc.id}">${doc.link ? 'Open' : 'View'}</button>
+                  <button class="btn btn-sm btn-danger" data-doc-remove="${doc.id}">Remove</button>
+                </div>
+              </div>
+            `).join('') : `<div class="att-empty">No supporting documents yet.</div>`}
+          </div>
+          <div style="display:flex; gap:24px; flex-wrap:wrap;">
+            <div>
+              <button class="btn btn-sm" id="btnChooseSupportingDoc" type="button">+ Add PDF</button>
+              <input type="file" id="supportingDocFileInput" class="file-input" accept="application/pdf">
+            </div>
+            <div style="display:flex; gap:8px; flex:1; min-width:220px;">
+              <input id="supportingDocLinkInput" type="url" placeholder="https://... paste a link instead" style="flex:1; padding:7px 9px; border:1px solid var(--border); border-radius:6px; font-size:12.5px; background:var(--bg); color:var(--ink);">
+              <button class="btn btn-sm" id="btnAddSupportingDocLink" type="button">Add Link</button>
+            </div>
+          </div>
+        </div>
+
         <div class="modal-actions">
           <button class="btn" id="modalCancel">Cancel</button>
           <button class="btn btn-gold" id="modalSaveAttEdit">Save Changes</button>
@@ -3083,38 +3138,189 @@ function openEditAttachmentModal(id){
     </div>
   `;
 
+  let pendingReplacementFile = null;
+
   document.getElementById('modalCancel').addEventListener('click', closeModal);
   document.getElementById('modalOverlay').addEventListener('click', (e) => { if (e.target.id === 'modalOverlay') closeModal(); });
-  document.getElementById('modalSaveAttEdit').addEventListener('click', () => saveAttachmentEdits(id));
+  document.getElementById('btnChooseSupportingDoc').addEventListener('click', () => document.getElementById('supportingDocFileInput').click());
+  document.getElementById('supportingDocFileInput').addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.type !== 'application/pdf'){ alert('Please choose a PDF file.'); e.target.value = ''; return; }
+    addSupportingDocumentFile(id, file);
+  });
+  document.getElementById('btnAddSupportingDocLink').addEventListener('click', () => {
+    const link = document.getElementById('supportingDocLinkInput').value.trim();
+    if (!link){ alert('Paste a link first.'); return; }
+    if (!/^https?:\/\//i.test(link)){ alert('Links should start with http:// or https://'); return; }
+    addSupportingDocumentLink(id, link);
+  });
+  document.getElementById('supportingDocsList').addEventListener('click', e => {
+    const viewBtn = e.target.closest('[data-doc-view]');
+    if (viewBtn){ viewSupportingDocument(id, viewBtn.dataset.docView); return; }
+    const removeBtn = e.target.closest('[data-doc-remove]');
+    if (removeBtn){ removeSupportingDocument(id, removeBtn.dataset.docRemove); }
+  });
+  document.getElementById('btnChooseEditAttFile').addEventListener('click', () => document.getElementById('editAttFileInput').click());
+  document.getElementById('editAttFileInput').addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.type !== 'application/pdf'){ alert('Please choose a PDF file.'); e.target.value = ''; return; }
+    pendingReplacementFile = file;
+    document.getElementById('editAttFileLabel').textContent = `Will replace with: ${file.name} (${fmtBytes(file.size)}) — save to apply`;
+  });
+  document.getElementById('modalSaveAttEdit').addEventListener('click', () => saveAttachmentEdits(id, () => pendingReplacementFile));
 }
 
-async function saveAttachmentEdits(id){
+async function saveAttachmentEdits(id, getReplacementFile){
   const proj = current();
   const att = attachmentsCache.find(a => String(a.id) === String(id));
   if (!att) return;
 
+  const saveBtn = document.getElementById('modalSaveAttEdit');
+  if (saveBtn){ saveBtn.disabled = true; saveBtn.textContent = 'Saving...'; }
+
   const updates = {
     category: document.getElementById('editAttCategory').value,
     name: document.getElementById('editAttName').value.trim() || att.name,
-    notes: document.getElementById('editAttNotes').value.trim()
+    notes: document.getElementById('editAttNotes').value.trim(),
+    link: document.getElementById('editAttLink').value.trim()
   };
-  const linkInput = document.getElementById('editAttLink');
-  if (linkInput) updates.link = linkInput.value.trim();
+
+  const replacementFile = getReplacementFile ? getReplacementFile() : null;
+  const nameKey = projectNameKey(proj);
+  const isSharedRow = att.source === 'remote' && sbClient;
+
+  try {
+    // Swap in a new PDF first, if one was chosen — replaces the file wherever this entry actually lives.
+    if (replacementFile){
+      if (isSharedRow){
+        if (att.storagePath) await sbClient.storage.from(ATTACHMENTS_BUCKET).remove([att.storagePath]);
+        const safeName = replacementFile.name.replace(/[^a-z0-9.\-_]+/gi, '_');
+        const newPath = `${(nameKey || 'project').replace(/[^a-z0-9.\-_]+/gi,'_')}/${Date.now()}-${safeName}`;
+        const { error: upErr } = await sbClient.storage.from(ATTACHMENTS_BUCKET).upload(newPath, replacementFile, { contentType: 'application/pdf' });
+        if (upErr) throw upErr;
+        updates.storage_path = newPath;
+        updates.size_bytes = replacementFile.size;
+        updates.link = null; // a real file replaces a link-only entry
+      } else {
+        if (replacementFile.size > MAX_LOCAL_ATTACHMENT_BYTES){
+          alert(`That file is ${fmtBytes(replacementFile.size)} — local storage is capped at ${fmtBytes(MAX_LOCAL_ATTACHMENT_BYTES)}. Connect Supabase Storage for larger files.`);
+          if (saveBtn){ saveBtn.disabled = false; saveBtn.textContent = 'Save Changes'; }
+          return;
+        }
+        const dataUrl = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = e => resolve(e.target.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(replacementFile);
+        });
+        updates.fileDataUrl = dataUrl;
+        updates.sizeBytes = replacementFile.size;
+        updates.link = '';
+      }
+    }
+
+    if (isSharedRow){
+      const remotePayload = { category: updates.category, name: updates.name, notes: updates.notes, link: updates.link || null };
+      if (updates.storage_path){ remotePayload.storage_path = updates.storage_path; remotePayload.size_bytes = updates.size_bytes; }
+      const { error } = await sbClient.from(ATTACHMENTS_TABLE).update(remotePayload).eq('id', id);
+      if (error) throw error;
+    } else {
+      const localAtt = proj.attachments.find(a => a.id === id);
+      if (localAtt){
+        Object.assign(localAtt, updates);
+        saveAppStateDebounced();
+      }
+    }
+    closeModal();
+    renderAttachments();
+  } catch (e) {
+    alert('Could not save changes: ' + e.message);
+    if (saveBtn){ saveBtn.disabled = false; saveBtn.textContent = 'Save Changes'; }
+  }
+}
+
+// ---------- Supporting documents (covenants, restrictions, surveys, etc. — multiple per comp/lot) ----------
+async function persistDocumentsArray(att){
+  if (att.source === 'remote' && sbClient){
+    const { error } = await sbClient.from(ATTACHMENTS_TABLE).update({ documents: att.documents }).eq('id', att.id);
+    if (error){ alert('Could not save supporting documents: ' + error.message); return false; }
+  } else {
+    const proj = current();
+    const localAtt = proj.attachments.find(a => a.id === att.id);
+    if (localAtt){ localAtt.documents = att.documents; saveAppStateDebounced(); }
+  }
+  return true;
+}
+
+async function addSupportingDocumentFile(attId, file){
+  const att = attachmentsCache.find(a => String(a.id) === String(attId));
+  if (!att || !file) return;
+  const proj = current();
+  const nameKey = projectNameKey(proj);
+  const doc = { id: Date.now() + Math.random().toString(36).slice(2,7), name: file.name, sizeBytes: file.size, uploadedAt: Date.now() };
 
   if (att.source === 'remote' && sbClient){
-    const remotePayload = { category: updates.category, name: updates.name, notes: updates.notes };
-    if (linkInput) remotePayload.link = updates.link;
-    const { error } = await sbClient.from(ATTACHMENTS_TABLE).update(remotePayload).eq('id', id);
-    if (error){ alert('Could not save changes: ' + error.message); return; }
+    const safeName = file.name.replace(/[^a-z0-9.\-_]+/gi, '_');
+    const path = `${(nameKey||'project').replace(/[^a-z0-9.\-_]+/gi,'_')}/${attId}-docs/${Date.now()}-${safeName}`;
+    const { error } = await sbClient.storage.from(ATTACHMENTS_BUCKET).upload(path, file, { contentType: 'application/pdf' });
+    if (error){ alert('Upload failed: ' + error.message); return; }
+    doc.storagePath = path;
   } else {
-    const localAtt = proj.attachments.find(a => a.id === id);
-    if (localAtt){
-      Object.assign(localAtt, updates);
-      saveAppStateDebounced();
+    if (file.size > MAX_LOCAL_ATTACHMENT_BYTES){
+      alert(`That file is ${fmtBytes(file.size)} — local storage is capped at ${fmtBytes(MAX_LOCAL_ATTACHMENT_BYTES)} per file.`);
+      return;
     }
+    doc.fileDataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = e => resolve(e.target.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
   }
-  closeModal();
+
+  att.documents = [...(att.documents || []), doc];
+  await persistDocumentsArray(att);
   renderAttachments();
+  openEditAttachmentModal(attId); // stay on the same entry so you can keep adding more
+}
+
+async function addSupportingDocumentLink(attId, link, name){
+  const att = attachmentsCache.find(a => String(a.id) === String(attId));
+  if (!att || !link) return;
+  const doc = { id: Date.now() + Math.random().toString(36).slice(2,7), name: name || link, link, uploadedAt: Date.now() };
+  att.documents = [...(att.documents || []), doc];
+  await persistDocumentsArray(att);
+  renderAttachments();
+  openEditAttachmentModal(attId);
+}
+
+async function removeSupportingDocument(attId, docId){
+  const att = attachmentsCache.find(a => String(a.id) === String(attId));
+  if (!att) return;
+  const doc = (att.documents || []).find(d => String(d.id) === String(docId));
+  if (!doc) return;
+  if (!confirm(`Remove "${doc.name}"?`)) return;
+  if (doc.storagePath && sbClient) await sbClient.storage.from(ATTACHMENTS_BUCKET).remove([doc.storagePath]);
+  att.documents = (att.documents || []).filter(d => String(d.id) !== String(docId));
+  await persistDocumentsArray(att);
+  renderAttachments();
+  openEditAttachmentModal(attId);
+}
+
+async function viewSupportingDocument(attId, docId){
+  const att = attachmentsCache.find(a => String(a.id) === String(attId));
+  const doc = att && (att.documents || []).find(d => String(d.id) === String(docId));
+  if (!doc) return;
+  if (doc.link){ window.open(doc.link, '_blank'); return; }
+  if (doc.storagePath && sbClient){
+    const { data, error } = await sbClient.storage.from(ATTACHMENTS_BUCKET).createSignedUrl(doc.storagePath, 3600);
+    if (error){ alert('Could not open file: ' + error.message); return; }
+    window.open(data.signedUrl, '_blank');
+  } else if (doc.fileDataUrl){
+    window.open(doc.fileDataUrl, '_blank');
+  }
 }
 
 async function setAttachmentStatus(id, status){
@@ -3186,10 +3392,11 @@ async function renderAttachments(){
     if (att.link) metaBits.push('Link'); else metaBits.push(fmtBytes(att.sizeBytes));
     metaBits.push(new Date(att.uploadedAt).toLocaleDateString());
     metaBits.push(att.source === 'remote' ? 'Shared' : (att.storagePath ? 'Cloud' : 'Local'));
+    if ((att.documents || []).length) metaBits.push(`${att.documents.length} supporting doc${att.documents.length===1?'':'s'}`);
     return `
       <div class="att-row">
-        <div class="att-icon">${linkIcon}</div>
-        <div class="att-info">
+        <div class="att-icon" data-att-open-details="${att.id}" style="cursor:pointer;">${linkIcon}</div>
+        <div class="att-info" data-att-open-details="${att.id}" style="cursor:pointer;">
           <div class="att-name">${escapeAttr(att.name)}</div>
           <div class="att-meta">${metaBits.join(' · ')}</div>
         </div>
@@ -3275,6 +3482,8 @@ function attachCompsEvents(){
     }
     const editBtn = e.target.closest('[data-att-edit]');
     if (editBtn){ openEditAttachmentModal(editBtn.dataset.attEdit); return; }
+    const openDetailsEl = e.target.closest('[data-att-open-details]');
+    if (openDetailsEl){ openEditAttachmentModal(openDetailsEl.dataset.attOpenDetails); return; }
     const delBtn = e.target.closest('[data-att-delete]');
     if (delBtn){ deleteAttachment(delBtn.dataset.attDelete); }
   });
