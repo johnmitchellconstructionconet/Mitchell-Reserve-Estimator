@@ -234,14 +234,29 @@ tr.po-not-ready{opacity:0.55;}
 .scenario-card-tag{font-size:10.5px; color:var(--gray); margin-bottom:14px;}
 .scenario-card-empty{font-size:12.5px; color:var(--gray-light); font-style:italic; padding:20px 0;}
 .scenario-card-margin-label{font-size:10px; text-transform:uppercase; letter-spacing:0.06em; color:var(--gray); font-weight:600; margin-bottom:2px;}
-.stress-input-row{display:flex; gap:10px; margin:10px 0 14px; padding:10px; background:var(--bg); border-radius:8px;}
-.stress-input-field{flex:1;}
-.stress-input-field label{display:block; font-size:9.5px; text-transform:uppercase; letter-spacing:0.05em; color:var(--gray); font-weight:600; margin-bottom:4px;}
-.stress-input-field input{width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:6px; font-size:13px; font-weight:700; background:var(--white); color:var(--ink); font-variant-numeric:tabular-nums;}
-.stress-input-field input:focus{outline:none; border-color:var(--ink);}
-.scenario-snapshot-label{width:100%; border:1px solid transparent; background:transparent; font-size:14.5px; font-weight:700; color:var(--ink); padding:2px 4px; margin:0 0 2px -4px; border-radius:6px; font-family:inherit;}
+.scenario-snapshot-label{width:100%; border:1px solid transparent; background:transparent; font-size:13px; font-weight:700; color:var(--ink); padding:4px 6px; border-radius:6px; font-family:inherit;}
 .scenario-snapshot-label:hover{border-color:var(--border);}
 .scenario-snapshot-label:focus{outline:none; border-color:var(--ink); background:var(--white);}
+
+/* ---------- Stress test: linear live row + snapshot table ---------- */
+.stress-live-row{
+  display:flex; align-items:flex-end; gap:20px; flex-wrap:wrap;
+  background:var(--white); border:1px solid var(--border); border-radius:12px; padding:16px 18px;
+}
+.stress-live-inputs{display:flex; gap:10px; flex-shrink:0;}
+.stress-live-inputs .stress-input-field{width:100px;}
+.stress-live-inputs .stress-input-field label{display:block; font-size:9px; text-transform:uppercase; letter-spacing:0.05em; color:var(--gray); font-weight:600; margin-bottom:4px;}
+.stress-live-inputs .stress-input-field input{width:100%; padding:7px 8px; border:1px solid var(--border); border-radius:6px; font-size:13px; font-weight:700; background:var(--bg); color:var(--ink); font-variant-numeric:tabular-nums;}
+.stress-live-inputs .stress-input-field input:focus{outline:none; border-color:var(--ink); background:var(--white);}
+.stress-live-stats{display:flex; gap:22px; flex-wrap:wrap; flex:1; padding:0 4px;}
+.stress-stat .lbl{font-size:9px; text-transform:uppercase; letter-spacing:0.05em; color:var(--gray); font-weight:600; margin-bottom:3px;}
+.stress-stat .val{font-size:13.5px; font-weight:700; color:var(--ink); font-variant-numeric:tabular-nums; white-space:nowrap;}
+table.stress-snapshot-table{width:100%; border-collapse:collapse; font-size:12px;}
+table.stress-snapshot-table th{text-align:right; padding:7px 10px; font-size:9.5px; text-transform:uppercase; letter-spacing:0.04em; color:var(--gray); border-bottom:1.5px solid var(--ink); font-weight:700; white-space:nowrap;}
+table.stress-snapshot-table th:first-child{text-align:left;}
+table.stress-snapshot-table td{padding:8px 10px; border-bottom:1px solid var(--border); vertical-align:middle;}
+table.stress-snapshot-table td.num-cell{text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;}
+table.stress-snapshot-table tbody tr:hover{background:var(--active-bg);}
 .scenario-card-margin-value{font-size:28px; font-weight:800; font-variant-numeric:tabular-nums; line-height:1.1;}
 .scenario-card-margin-sub{font-size:12.5px; font-weight:600; font-variant-numeric:tabular-nums; margin-top:2px; margin-bottom:14px;}
 .scenario-card-divider{border-top:1px solid var(--border); margin:0 0 12px;}
@@ -1804,67 +1819,63 @@ function renderMarginBar(calc){
     const mc = marginColor(s.marginPct);
     const baseMc = marginColor(calc.marginVsCostPct);
 
-    const swingCardHtml = `
-      <div class="scenario-card" style="max-width:420px;">
-        <div class="scenario-card-accent expected"></div>
-        <div class="scenario-card-body">
-          <div class="scenario-card-title"><span class="sc-name">Cost ${fmtPct(s.costPct)}% / Price ${fmtPct(s.pricePct)}%</span></div>
-          <div class="scenario-card-tag">Set any combo you want — try the "bad day" (cost up, price down) or "good day" (cost down, price up) combo, or anything else</div>
-          <div class="stress-input-row">
-            <div class="stress-input-field">
-              <label>Cost Change %</label>
-              <input type="number" step="1" value="${s.costPct}" data-stress-scenario="A" data-stress-field="cost">
-            </div>
-            <div class="stress-input-field">
-              <label>Price Change %</label>
-              <input type="number" step="1" value="${s.pricePct}" data-stress-scenario="A" data-stress-field="price">
-            </div>
+    const swingRowHtml = `
+      <div class="stress-live-row">
+        <div class="stress-live-inputs">
+          <div class="stress-input-field">
+            <label>Cost Change %</label>
+            <input type="text" inputmode="numeric" value="${s.costPct}" data-stress-scenario="A" data-stress-field="cost">
           </div>
-          <div class="scenario-card-margin-label">Net Margin</div>
-          <div class="scenario-card-margin-value" style="color:${mc}">${s.marginPct.toFixed(1)}%</div>
-          <div class="scenario-card-margin-sub" style="color:${mc}">${fmtMoney(s.margin)}</div>
-          <div class="scenario-card-divider"></div>
-          <div class="scenario-card-stats-grid">
-            <div class="scenario-card-stat"><div class="lbl">Sales Price</div><div class="val">${fmtMoney(s.salePrice)}</div></div>
-            <div class="scenario-card-stat"><div class="lbl">Realtor Fee</div><div class="val">${fmtMoney(s.realtorFee)}</div></div>
-            <div class="scenario-card-stat"><div class="lbl">Build + Lot Cost</div><div class="val">${fmtMoney(s.cost)}</div></div>
-            <div class="scenario-card-stat"><div class="lbl">vs. Expected Margin</div><div class="val">${(s.marginPct - calc.marginVsCostPct).toFixed(1)} pts</div></div>
+          <div class="stress-input-field">
+            <label>Price Change %</label>
+            <input type="text" inputmode="numeric" value="${s.pricePct}" data-stress-scenario="A" data-stress-field="price">
           </div>
-          <button class="btn btn-sm" style="width:100%; margin-top:12px;" data-save-snapshot="A">+ Push to Lender PDF as Snapshot</button>
         </div>
+        <div class="stress-live-stats">
+          <div class="stress-stat"><div class="lbl">Sales Price</div><div class="val">${fmtMoney(s.salePrice)}</div></div>
+          <div class="stress-stat"><div class="lbl">Realtor Fee</div><div class="val">${fmtMoney(s.realtorFee)}</div></div>
+          <div class="stress-stat"><div class="lbl">Build + Lot</div><div class="val">${fmtMoney(s.cost)}</div></div>
+          <div class="stress-stat"><div class="lbl">Net Margin</div><div class="val" style="color:${mc}; font-size:16px;">${s.marginPct.toFixed(1)}%</div></div>
+          <div class="stress-stat"><div class="lbl">Margin $</div><div class="val" style="color:${mc};">${fmtMoney(s.margin)}</div></div>
+          <div class="stress-stat"><div class="lbl">vs. Expected</div><div class="val">${(s.marginPct - calc.marginVsCostPct).toFixed(1)} pts</div></div>
+        </div>
+        <button class="btn btn-sm" data-save-snapshot="A">+ Push to Lender PDF</button>
       </div>
     `;
 
-    const savedCard = (snap) => {
+    const savedRowsHtml = calc.stressSnapshots.map(snap => {
       const smc = marginColor(snap.marginPct);
+      const diffPts = snap.marginPct - calc.marginVsCostPct;
       return `
-        <div class="scenario-card">
-          <div class="scenario-card-accent expected"></div>
-          <div class="scenario-card-body">
-            <input type="text" class="scenario-snapshot-label" value="${escapeAttr(snap.label)}" data-snapshot-rename="${snap.id}">
-            <div class="scenario-card-tag">Cost ${fmtPct(snap.costPct)}% / Price ${fmtPct(snap.pricePct)}% — saved, prints on the lender PDF</div>
-            <div class="scenario-card-margin-label">Net Margin</div>
-            <div class="scenario-card-margin-value" style="color:${smc}">${snap.marginPct.toFixed(1)}%</div>
-            <div class="scenario-card-margin-sub" style="color:${smc}">${fmtMoney(snap.margin)}</div>
-            <div class="scenario-card-divider"></div>
-            <div class="scenario-card-stats-grid">
-              <div class="scenario-card-stat"><div class="lbl">Sales Price</div><div class="val">${fmtMoney(snap.salePrice)}</div></div>
-              <div class="scenario-card-stat"><div class="lbl">Realtor Fee</div><div class="val">${fmtMoney(snap.realtorFee)}</div></div>
-              <div class="scenario-card-stat"><div class="lbl">Build + Lot Cost</div><div class="val">${fmtMoney(snap.cost)}</div></div>
-              <div class="scenario-card-stat"><div class="lbl">vs. Expected Margin</div><div class="val">${(snap.marginPct - calc.marginVsCostPct).toFixed(1)} pts</div></div>
-            </div>
-            <button class="btn btn-sm btn-danger" style="width:100%; margin-top:12px;" data-remove-snapshot="${snap.id}">Remove from PDF</button>
-          </div>
-        </div>
+        <tr>
+          <td><input type="text" class="scenario-snapshot-label" value="${escapeAttr(snap.label)}" data-snapshot-rename="${snap.id}"></td>
+          <td class="num-cell">${fmtPct(snap.costPct)}%</td>
+          <td class="num-cell">${fmtPct(snap.pricePct)}%</td>
+          <td class="num-cell">${fmtMoney(snap.salePrice)}</td>
+          <td class="num-cell">${fmtMoney(snap.realtorFee)}</td>
+          <td class="num-cell">${fmtMoney(snap.cost)}</td>
+          <td class="num-cell" style="color:${smc}; font-weight:700;">${fmtMoney(snap.margin)}</td>
+          <td class="num-cell" style="color:${smc}; font-weight:700;">${snap.marginPct.toFixed(1)}%</td>
+          <td class="num-cell">${diffPts>=0?'+':''}${diffPts.toFixed(1)} pts</td>
+          <td><button class="del-btn" data-remove-snapshot="${snap.id}" title="Remove">&times;</button></td>
+        </tr>
       `;
-    };
+    }).join('');
 
     const savedHtml = calc.stressSnapshots.length ? `
       <div style="margin-top:22px; padding-top:18px; border-top:1px solid var(--border);">
         <div class="sr-label" style="margin-bottom:2px;">Saved Scenarios — Included on the Lender PDF</div>
-        <p style="font-size:11.5px; color:var(--gray); margin:4px 0 14px;">These print on the Bank / Lender PDF in this order, right after Best / Expected / Worst Case. Rename or remove any of them.</p>
-        <div class="scenario-cards">
-          ${calc.stressSnapshots.map(savedCard).join('')}
+        <p style="font-size:11.5px; color:var(--gray); margin:4px 0 12px;">These print on the Bank / Lender PDF in this order, right after Best / Expected / Worst Case. Click a name to rename it.</p>
+        <div style="overflow-x:auto;">
+          <table class="stress-snapshot-table">
+            <thead>
+              <tr>
+                <th>Scenario</th><th>Cost %</th><th>Price %</th><th>Sales Price</th><th>Realtor Fee</th>
+                <th>Build + Lot</th><th>Margin $</th><th>Margin %</th><th>vs. Expected</th><th></th>
+              </tr>
+            </thead>
+            <tbody>${savedRowsHtml}</tbody>
+          </table>
         </div>
       </div>
     ` : '';
@@ -1877,7 +1888,7 @@ function renderMarginBar(calc){
           (<b style="color:${baseMc}">${calc.marginVsCostPct.toFixed(1)}% margin</b> today). Negative numbers work too.
           Like a combo? Push it to the lender PDF as a saved scenario, then change the numbers and push another.
         </p>
-        ${swingCardHtml}
+        ${swingRowHtml}
         ${savedHtml}
       </div>
     `;
@@ -1902,15 +1913,18 @@ function renderMarginBar(calc){
 
 // Re-renders the margin bar (which redraws everything, including the stress-test inputs) while
 // keeping the input the user is actively typing in focused, so a keystroke doesn't lose the cursor.
-function renderMarginBarPreserveFocus(calc, sourceInput){
+// rawValue: the exact text the user just typed — restored verbatim after re-render so things like a
+// lone "-" (typing toward a negative number) never get silently rounded away to "0" mid-keystroke.
+function renderMarginBarPreserveFocus(calc, sourceInput, rawValue){
   const scenario = sourceInput.dataset.stressScenario;
   const field = sourceInput.dataset.stressField;
   const selStart = sourceInput.selectionStart;
   renderMarginBar(calc);
   const newInput = document.querySelector(`[data-stress-scenario="${scenario}"][data-stress-field="${field}"]`);
   if (newInput){
+    if (rawValue !== undefined) newInput.value = rawValue;
     newInput.focus();
-    try { newInput.setSelectionRange(selStart, selStart); } catch (e) { /* number inputs don't support this in every browser — harmless if it fails */ }
+    try { newInput.setSelectionRange(selStart, selStart); } catch (e) { /* harmless if it fails */ }
   }
 }
 
@@ -2097,13 +2111,15 @@ function attachEvents(){
     const field = e.target.dataset.stressField;
     if (scenario && field){
       const proj = current();
-      const val = e.target.value === '' ? 0 : Number(e.target.value);
+      const raw = e.target.value;
+      const parsed = parseFloat(raw);
+      const val = isNaN(parsed) ? 0 : parsed; // "-" or "" mid-typing computes as 0 until it's a real number
       if (scenario === 'A' && field === 'cost') proj.project.stressACostPct = val;
       if (scenario === 'A' && field === 'price') proj.project.stressAPricePct = val;
       if (scenario === 'B' && field === 'cost') proj.project.stressBCostPct = val;
       if (scenario === 'B' && field === 'price') proj.project.stressBPricePct = val;
       const calc = computeAll(proj);
-      renderMarginBarPreserveFocus(calc, e.target);
+      renderMarginBarPreserveFocus(calc, e.target, raw);
       saveAppStateDebounced();
       return;
     }
@@ -2366,6 +2382,7 @@ function switchTab(tab){
   if ((tab === 'app' || tab === 'report' || tab === 'polist') && !current()){
     tab = 'dashboard';
   }
+  if (tab === 'dashboard'){ app.activeId = null; } // clear BEFORE checking hasProject below, or the sidebar still thinks a project is open
 
   document.querySelectorAll('.sidebar-nav .nav-item[data-tab]').forEach(t => {
     t.classList.toggle('active', t.dataset.tab === tab);
@@ -2379,8 +2396,6 @@ function switchTab(tab){
   document.getElementById('reportView').style.display = tab==='report' ? 'block' : 'none';
   document.getElementById('poView').style.display = tab==='polist' ? 'block' : 'none';
   document.getElementById('settingsView').style.display = tab==='settings' ? 'block' : 'none';
-
-  if (tab === 'dashboard'){ app.activeId = null; }
 
   document.getElementById('btnSaveProject').disabled = !current();
   document.getElementById('btnPrint').disabled = !current();
@@ -3081,7 +3096,9 @@ function buildBankPdf(proj){
   // Two-card stress test — cost % and price % move independently, each flexed off the Expected case.
   // Draws a 2-per-row grid of stress-test-style cards, paginating automatically if there are more
   // than fit on the remaining page. Used for both the live A/B pair and any saved snapshots.
-  function drawStressCardGrid(startY, heading, subtitle, cardsData){
+  // Compact table for stress test rows (live scenario + any saved snapshots) — one line per
+  // scenario instead of a tall card each, so a handful of snapshots doesn't sprawl across pages.
+  function drawStressTable(startY, heading, subtitle, rows){
     let ty = startY;
     if (heading){
       doc.setFont(FONT,'bold'); doc.setFontSize(11); doc.setTextColor(INK[0],INK[1],INK[2]);
@@ -3089,63 +3106,57 @@ function buildBankPdf(proj){
     }
     if (subtitle){
       doc.setFont(FONT,'normal'); doc.setFontSize(8); doc.setTextColor(130,125,115);
-      const subLines = doc.splitTextToSize(subtitle, contentWidth * 0.86);
+      const subLines = doc.splitTextToSize(subtitle, contentWidth * 0.9);
       doc.text(subLines, pageWidth/2, ty, {align:'center'});
       ty += subLines.length * 10.5 + 14;
     }
 
-    const gap = 14;
-    const cardH = 176;
     const fmtPct = n => (n > 0 ? '+' : '') + n;
+    // column x-positions across contentWidth, right-aligned number columns
+    const c = {
+      label: leftColX,
+      cost:  leftColX + contentWidth*0.20,
+      price: leftColX + contentWidth*0.30,
+      sale:  leftColX + contentWidth*0.44,
+      fee:   leftColX + contentWidth*0.58,
+      build: leftColX + contentWidth*0.72,
+      margd: leftColX + contentWidth*0.86,
+      margp: leftColX + contentWidth
+    };
 
-    for (let row = 0; row < cardsData.length; row += 2){
-      checkSpace(cardH + 16);
-      const pair = cardsData.slice(row, row+2);
-      const isSingle = pair.length === 1;
-      const cardW = isSingle ? 300 : (contentWidth - gap) / 2;
-      const rowStartX = isSingle ? leftColX + (contentWidth - cardW) / 2 : leftColX;
-      pair.forEach((card, i) => {
-        const s = card.s;
-        const x = rowStartX + i*(cardW+gap);
-        const padX = 13;
+    checkSpace(30);
+    doc.setFillColor(26,26,26);
+    doc.rect(margin, ty-9, contentWidth, 15, 'F');
+    doc.setTextColor(255,255,255); doc.setFont(FONT,'bold'); doc.setFontSize(6.7);
+    doc.text('SCENARIO', c.label+3, ty);
+    doc.text('COST %', c.cost, ty, {align:'right'});
+    doc.text('PRICE %', c.price, ty, {align:'right'});
+    doc.text('SALES PRICE', c.sale, ty, {align:'right'});
+    doc.text('REALTOR FEE', c.fee, ty, {align:'right'});
+    doc.text('BUILD+LOT', c.build, ty, {align:'right'});
+    doc.text('MARGIN $', c.margd, ty, {align:'right'});
+    doc.text('MARGIN %', c.margp, ty, {align:'right'});
+    ty += 15;
 
-        doc.setFillColor(card.bg[0], card.bg[1], card.bg[2]);
-        doc.roundedRect(x, ty, cardW, cardH, 7, 7, 'F');
-        doc.setDrawColor(224,220,212); doc.setLineWidth(0.75);
-        doc.roundedRect(x, ty, cardW, cardH, 7, 7, 'S');
-        doc.setFillColor(card.accent[0], card.accent[1], card.accent[2]);
-        doc.roundedRect(x, ty, cardW, 4, 2, 2, 'F');
+    rows.forEach((r, i) => {
+      checkSpace(16);
+      if (i % 2 === 1){ doc.setFillColor(247,246,243); doc.rect(margin, ty-9, contentWidth, 14, 'F'); }
+      const mc = r.marginPct>=20?[76,107,79]:(r.marginPct>=10?[138,109,59]:[166,71,60]);
+      doc.setFont(FONT,'bold'); doc.setFontSize(8); doc.setTextColor(INK[0],INK[1],INK[2]);
+      doc.text(r.label, c.label+3, ty);
+      doc.setFont(FONT,'normal');
+      doc.text(`${fmtPct(r.costPct)}%`, c.cost, ty, {align:'right'});
+      doc.text(`${fmtPct(r.pricePct)}%`, c.price, ty, {align:'right'});
+      doc.text(fmtMoney(r.salePrice), c.sale, ty, {align:'right'});
+      doc.text(fmtMoney(r.realtorFee), c.fee, ty, {align:'right'});
+      doc.text(fmtMoney(r.cost), c.build, ty, {align:'right'});
+      doc.setFont(FONT,'bold'); doc.setTextColor(mc[0],mc[1],mc[2]);
+      doc.text(fmtMoney(r.margin), c.margd, ty, {align:'right'});
+      doc.text(`${r.marginPct.toFixed(1)}%`, c.margp, ty, {align:'right'});
+      doc.setTextColor(INK[0],INK[1],INK[2]);
+      ty += 14;
+    });
 
-        let cy = ty + 24;
-        doc.setFont(FONT,'bold'); doc.setFontSize(11.5); doc.setTextColor(INK[0],INK[1],INK[2]);
-        doc.text(card.label, x + cardW/2, cy, {align:'center'});
-        cy += 13;
-        doc.setFont(FONT,'normal'); doc.setFontSize(7.5); doc.setTextColor(130,125,115);
-        doc.text(`Cost ${fmtPct(s.costPct)}% / Price ${fmtPct(s.pricePct)}%`, x + cardW/2, cy, {align:'center'});
-        cy += 14;
-
-        doc.setDrawColor(224,220,212); doc.setLineWidth(0.5);
-        doc.line(x+padX, cy, x+cardW-padX, cy);
-        cy += 16;
-
-        const statRow = (label, value, color) => {
-          doc.setFont(FONT,'normal'); doc.setFontSize(6.8); doc.setTextColor(140,135,125);
-          doc.text(label.toUpperCase(), x+padX, cy);
-          doc.setFont(FONT,'bold'); doc.setFontSize(10);
-          doc.setTextColor(color?color[0]:INK[0], color?color[1]:INK[1], color?color[2]:INK[2]);
-          doc.text(value, x+padX, cy+11);
-          cy += 24;
-        };
-        statRow('Sales Price', fmtMoney(s.salePrice));
-        statRow('Realtor Fee', fmtMoney(s.realtorFee));
-        statRow('Build + Lot Cost', fmtMoney(s.cost));
-        const mc = s.marginPct>=20?[76,107,79]:(s.marginPct>=10?[138,109,59]:[166,71,60]);
-        statRow('Net Margin', `${fmtMoney(s.margin)} (${s.marginPct.toFixed(1)}%)`, mc);
-      });
-      ty += cardH + 16;
-    }
-
-    doc.setTextColor(INK[0],INK[1],INK[2]);
     return ty;
   }
 
@@ -3215,27 +3226,18 @@ function buildBankPdf(proj){
   y += 26;
 
   if (calc.targetSalePrice){
-    checkSpace(230);
-    y = drawStressCardGrid(
+    checkSpace(80);
+    const rows = [
+      Object.assign({ label: 'Live Scenario' }, calc.stressScenarioA),
+      ...calc.stressSnapshots.map(snap => Object.assign({ label: snap.label }, snap))
+    ];
+    y = drawStressTable(
       y,
       'Stress Test — Cost & Price Move Together',
-      `A gut-check on how exposed this deal is if cost and sales price each move by their own %, flexed off the Expected case (${calc.marginVsCostPct.toFixed(1)}% margin today).`,
-      [
-        { label: 'Live Scenario', s: calc.stressScenarioA, accent: ACCENT, bg:[250,249,246] }
-      ]
+      `A gut-check on how exposed this deal is if cost and sales price each move by their own %, flexed off the Expected case (${calc.marginVsCostPct.toFixed(1)}% margin today). "Live Scenario" is whatever's currently dialed in; any saved scenarios below it were pushed from the app.`,
+      rows
     );
-    y += 26;
-
-    if (calc.stressSnapshots.length){
-      checkSpace(200);
-      y = drawStressCardGrid(
-        y,
-        'Saved Scenarios',
-        'Additional cost/price combinations saved for this project.',
-        calc.stressSnapshots.map(snap => ({ label: snap.label, s: snap, accent: ACCENT, bg:[250,249,246] }))
-      );
-      y += 26;
-    }
+    y += 22;
   }
 
   // ---------- Line item detail ----------
