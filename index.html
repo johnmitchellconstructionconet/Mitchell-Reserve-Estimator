@@ -339,8 +339,8 @@ tr.subtotal-row td{
 .report-title{text-align:center; font-size:14px; text-transform:uppercase; letter-spacing:0.12em; color:var(--gold-deep); margin:18px 0 22px; font-weight:700;}
 .report-project-grid{display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:10px 24px; margin-bottom:28px; font-size:12.5px; border:1px solid var(--border); padding:14px 18px; border-radius:var(--radius); background:var(--bg);}
 .report-project-grid div span{display:block; font-size:10px; text-transform:uppercase; letter-spacing:0.05em; color:var(--gray);}
-.report-category{margin-bottom:22px; page-break-inside:avoid;}
-.report-category h3{font-size:13px; text-transform:uppercase; letter-spacing:0.05em; border-bottom:1.5px solid var(--ink); padding-bottom:6px; margin-bottom:8px; display:flex; justify-content:space-between; font-weight:700; color:var(--ink);}
+.report-category{margin-bottom:20px;}
+.report-category h3{font-size:13px; text-transform:uppercase; letter-spacing:0.05em; border-bottom:1.5px solid var(--ink); padding-bottom:6px; margin-bottom:8px; display:flex; justify-content:space-between; font-weight:700; color:var(--ink); page-break-after:avoid; break-after:avoid;}
 .report-category .scope-note{font-size:12px; color:var(--gray); margin-bottom:8px; font-style:italic;}
 .report-category ul{margin:0 0 8px; padding-left:0; list-style:none;}
 .report-category li{font-size:11.5px; padding:2px 0; break-inside:avoid; color:var(--ink);}
@@ -358,7 +358,13 @@ tr.subtotal-row td{
   .sidebar, .content-topbar, .tabs, .report-controls, .no-print{display:none !important;}
   #reportView{display:block !important; box-shadow:none; border:none; padding:0; max-width:100%;}
   .main, #appView, #dashboardView, #poView, #settingsView{display:none !important;}
-  .report-category{page-break-inside:avoid;}
+  .report-category{page-break-inside:auto;}
+  .report-category .allocated{page-break-inside:avoid; break-inside:avoid;}
+}
+
+@page{
+  size:letter;
+  margin:0.6in 0.7in 0.95in;
 }
 
 .hidden{display:none !important;}
@@ -400,7 +406,6 @@ tr.subtotal-row td{
   }
   #printFooterFixed .pf-contact{font-weight:600; color:var(--gray);}
   #printFooterFixed .pf-line2{margin-top:2px; color:var(--gray-light);}
-  .report-letterhead{padding-bottom:60px;} /* keep content clear of the fixed footer on the last page */
 }
 </style>
 </head>
