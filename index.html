@@ -76,6 +76,17 @@ h1,h2,h3,h4{font-family:var(--app-font); font-weight:700; letter-spacing:-0.01em
   position:sticky; top:0; z-index:40;
 }
 
+.global-notify-bar{
+  display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;
+  padding:12px 28px; background:var(--attn-bg); color:var(--attn-text);
+  border-bottom:1px solid rgba(0,0,0,0.06);
+  position:sticky; top:65px; z-index:39;
+  font-size:13px; font-weight:700;
+}
+.global-notify-bar .gnb-text{display:flex; align-items:center; gap:9px;}
+.global-notify-bar .btn{background:var(--attn-text); border-color:var(--attn-text); color:var(--white); flex-shrink:0;}
+.global-notify-bar .btn:hover{background:#8a3a30;}
+
 .brand{display:flex; align-items:center; gap:14px; cursor:pointer;}
 .brand .name{font-size:16px; font-weight:700; letter-spacing:-0.01em; color:var(--ink);}
 .brand .tag{font-size:10.5px; color:var(--gray); letter-spacing:0.08em; text-transform:uppercase; font-weight:600;}
@@ -531,19 +542,14 @@ tr.subtotal-row td{
       <button class="btn btn-gold" id="btnPrint" disabled>Print / Export Report</button>
     </div>
 
+    <div id="globalNotifyBar" class="global-notify-bar hidden"></div>
+
     <div id="dashboardView" class="main">
       <div class="dash-eyebrow">Dashboard</div>
       <div class="dash-head">
         <div>
           <h1>Your Projects</h1>
           <p>Each project keeps its own line items, rates, and scope notes — fully separate from the others.</p>
-        </div>
-      </div>
-
-      <div class="panel" style="margin-bottom:20px;">
-        <div style="display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;">
-          <div id="wholeSyncStatus" style="font-size:12.5px; color:var(--gray);"></div>
-          <button class="btn" id="btnSyncNow">Sync Now</button>
         </div>
       </div>
 
@@ -2519,17 +2525,6 @@ function attachEvents(){
     renderDashboard();
   });
 
-  document.getElementById('btnSyncNow').addEventListener('click', async () => {
-    const btn = document.getElementById('btnSyncNow');
-    btn.disabled = true;
-    btn.textContent = 'Syncing...';
-    await Promise.all([pullProjectsFromRemote(), refreshPendingApprovalCounts()]);
-    btn.disabled = false;
-    btn.textContent = 'Sync Now';
-    updateWholeSyncStatus();
-    renderDashboard();
-  });
-
   document.querySelectorAll('.sidebar-nav .nav-item[data-tab]').forEach(t => {
     t.addEventListener('click', () => switchTab(t.dataset.tab));
   });
@@ -2666,11 +2661,13 @@ function switchTab(tab){
   if (tab === 'dashboard'){
     document.getElementById('projectCrumb').classList.add('hidden');
     renderDashboard();
+    renderGlobalNotifyBar();
     if (sbClient){
       // Refresh in the background so a teammate's new/updated project — and any newly pending
       // comp/lot approvals — show up without a full reload.
       Promise.all([pullProjectsFromRemote(), refreshPendingApprovalCounts()]).then(() => {
         if (document.getElementById('dashboardView').style.display !== 'none') renderDashboard();
+        renderGlobalNotifyBar();
       });
     }
   }
@@ -2680,6 +2677,7 @@ function switchTab(tab){
   if (tab === 'comps') renderAttachments();
   if (tab === 'finance') renderFinance();
   if (tab === 'settings') renderSettingsView();
+  renderGlobalNotifyBar(); // visible from every screen, not just the dashboard
 }
 
 // ---------- Report view ----------
@@ -2841,6 +2839,43 @@ function pendingApprovalCountForProject(proj){
   return remoteCount + localCount;
 }
 
+// A persistent, app-wide notification bar — visible on every screen, not just the Dashboard —
+// whenever any project has comps/lots sitting in "In Review." Disappears on its own once
+// everything's been approved or rejected.
+function totalPendingApprovals(){
+  return app.projects.reduce((sum, p) => sum + pendingApprovalCountForProject(p), 0);
+}
+
+function renderGlobalNotifyBar(){
+  const el = document.getElementById('globalNotifyBar');
+  if (!el) return;
+  const projectsWithPending = app.projects.filter(p => pendingApprovalCountForProject(p) > 0);
+  const total = projectsWithPending.reduce((sum, p) => sum + pendingApprovalCountForProject(p), 0);
+
+  if (total <= 0){
+    el.classList.add('hidden');
+    el.innerHTML = '';
+    return;
+  }
+
+  el.classList.remove('hidden');
+  el.innerHTML = `
+    <div class="gnb-text">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M8 1.5 1.5 13h13Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M8 6v3.2M8 11.4v.1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+      <span>${total} comp${total===1?'':'s'}/lot${total===1?'':'s'} across ${projectsWithPending.length} project${projectsWithPending.length===1?'':'s'} need${projectsWithPending.length===1?'s':''} your review</span>
+    </div>
+    <button class="btn btn-sm" id="btnGoReviewNow">Review Now</button>
+  `;
+  document.getElementById('btnGoReviewNow').addEventListener('click', () => {
+    if (projectsWithPending.length === 1){
+      app.activeId = projectsWithPending[0].id;
+      switchTab('comps');
+    } else {
+      switchTab('dashboard');
+    }
+  });
+}
+
 function updateAttStorageStatus(nameKey){
   const el = document.getElementById('attStorageStatus');
   if (!el) return;
@@ -2941,11 +2976,12 @@ async function addAttachmentLink(){
   finishAttachmentUpload();
 }
 
-function finishAttachmentUpload(){
+async function finishAttachmentUpload(){
   document.getElementById('attName').value = '';
   document.getElementById('attNotes').value = '';
   document.getElementById('attChosenFileName').textContent = '';
   document.getElementById('attFileInput').value = '';
+  if (sbClient) await refreshPendingApprovalCounts(); // immediate feedback on the notification bar for a fresh upload
   renderAttachments();
   saveAppState();
 }
@@ -2988,6 +3024,7 @@ async function setAttachmentStatus(id, status){
   if (att.source === 'remote' && sbClient){
     const { error } = await sbClient.from(ATTACHMENTS_TABLE).update({ status }).eq('id', id);
     if (error){ alert('Could not update status: ' + error.message); return; }
+    await refreshPendingApprovalCounts(); // so the global notification bar updates immediately, not on the next poll
   } else {
     const localAtt = proj.attachments.find(a => a.id === id);
     if (localAtt) localAtt.status = status;
@@ -3097,6 +3134,7 @@ async function renderAttachments(){
 
   renderGroup('compsListComp', 'comp', 'No comps attached yet.');
   renderGroup('compsListLot', 'lot', 'No potential lots attached yet.');
+  renderGlobalNotifyBar();
 }
 
 function attachCompsEvents(){
@@ -4595,12 +4633,14 @@ setInterval(saveAppState, 5000);
 
 // Auto-sync with the team in the background — no manual "Sync Now" click required. Only refreshes
 // the dashboard's own display when you're actually looking at it, so it never yanks you around.
+// The notification bar itself updates regardless of which screen is open.
 setInterval(() => {
   if (!sbClient) return;
   Promise.all([pullProjectsFromRemote(), refreshPendingApprovalCounts()]).then(() => {
     if (document.getElementById('dashboardView') && document.getElementById('dashboardView').style.display !== 'none'){
       renderDashboard();
     }
+    renderGlobalNotifyBar();
   });
 }, 20000);
 
