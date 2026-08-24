@@ -86,6 +86,14 @@ h1,h2,h3,h4{font-family:var(--app-font); font-weight:700; letter-spacing:-0.01em
 .global-notify-bar .gnb-text{display:flex; align-items:center; gap:9px;}
 .global-notify-bar .btn{background:var(--attn-text); border-color:var(--attn-text); color:var(--white); flex-shrink:0;}
 .global-notify-bar .btn:hover{background:#8a3a30;}
+.global-notify-bar .gnb-chips{display:flex; align-items:center; gap:8px; flex-wrap:wrap; flex:1;}
+.gnb-chip{
+  display:flex; align-items:center; gap:7px; background:var(--white); color:var(--attn-text);
+  border:1px solid var(--attn-text); border-radius:20px; padding:5px 10px 5px 12px;
+  font-size:12px; font-weight:700; cursor:pointer; transition:background .12s;
+}
+.gnb-chip:hover{background:var(--attn-bg);}
+.gnb-chip-count{background:var(--attn-text); color:var(--white); border-radius:20px; min-width:18px; height:18px; display:flex; align-items:center; justify-content:center; font-size:10.5px; padding:0 5px;}
 
 .brand{display:flex; align-items:center; gap:14px; cursor:pointer;}
 .brand .name{font-size:16px; font-weight:700; letter-spacing:-0.01em; color:var(--ink);}
@@ -2858,8 +2866,10 @@ function totalPendingApprovals(){
 function renderGlobalNotifyBar(){
   const el = document.getElementById('globalNotifyBar');
   if (!el){ console.warn('renderGlobalNotifyBar: #globalNotifyBar element not found in the DOM.'); return; }
-  const projectsWithPending = app.projects.filter(p => pendingApprovalCountForProject(p) > 0);
-  const total = projectsWithPending.reduce((sum, p) => sum + pendingApprovalCountForProject(p), 0);
+  const projectsWithPending = app.projects
+    .map(p => ({ proj: p, count: pendingApprovalCountForProject(p) }))
+    .filter(x => x.count > 0);
+  const total = projectsWithPending.reduce((sum, x) => sum + x.count, 0);
   console.log(`[notify] checked ${app.projects.length} project(s); ${total} pending across ${projectsWithPending.length}. Remote counts map:`, pendingApprovalCounts);
 
   if (total <= 0){
@@ -2872,17 +2882,22 @@ function renderGlobalNotifyBar(){
   el.innerHTML = `
     <div class="gnb-text">
       <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M8 1.5 1.5 13h13Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M8 6v3.2M8 11.4v.1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-      <span>${total} comp${total===1?'':'s'}/lot${total===1?'':'s'} across ${projectsWithPending.length} project${projectsWithPending.length===1?'':'s'} need${projectsWithPending.length===1?'s':''} your review</span>
+      <span>Needs review:</span>
     </div>
-    <button class="btn btn-sm" id="btnGoReviewNow">Review Now</button>
+    <div class="gnb-chips">
+      ${projectsWithPending.map(x => `
+        <button class="gnb-chip" data-gnb-open-project="${x.proj.id}">
+          ${escapeAttr(x.proj.project.name || 'Untitled Project')}
+          <span class="gnb-chip-count">${x.count}</span>
+        </button>
+      `).join('')}
+    </div>
   `;
-  document.getElementById('btnGoReviewNow').addEventListener('click', () => {
-    if (projectsWithPending.length === 1){
-      app.activeId = projectsWithPending[0].id;
+  el.querySelectorAll('[data-gnb-open-project]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      app.activeId = Number(btn.dataset.gnbOpenProject);
       switchTab('comps');
-    } else {
-      switchTab('dashboard');
-    }
+    });
   });
 }
 
