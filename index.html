@@ -1375,9 +1375,12 @@ function pushAllProjectsToRemoteDebounced(){
 async function pushProjectToRemote(proj){
   if (!sbClient) return;
   proj.updatedAt = Date.now();
+  // Comps/lots have their own dedicated shared table now — never bundle the old local attachments
+  // array into the whole-project blob, or a stale snapshot could later overwrite the live data.
+  const projForSync = Object.assign({}, proj, { attachments: [] });
   const payload = {
     name: proj.project.name || 'Untitled Project',
-    data: proj,
+    data: projForSync,
     updated_at: new Date(proj.updatedAt).toISOString(),
     updated_by: currentAuthUser ? currentAuthUser.email : null
   };
@@ -1417,12 +1420,14 @@ async function pullProjectsFromRemote(){
         if ((remoteProj.updatedAt || 0) > (localMatch.updatedAt || 0)){
           hydrateProject(remoteProj);
           remoteProj.id = localMatch.id; // keep using the same local numeric id so nothing currently open gets orphaned
+          remoteProj.attachments = localMatch.attachments; // comps/lots sync separately — never let this blob overwrite them
           const idx = app.projects.indexOf(localMatch);
           app.projects[idx] = remoteProj;
         }
       } else {
         hydrateProject(remoteProj);
         remoteProj.id = app.nextProjectId++;
+        remoteProj.attachments = []; // this project's real comps/lots (if any) load fresh from the shared table, not this blob
         app.projects.push(remoteProj);
       }
     });
@@ -4492,7 +4497,7 @@ async function attemptSignIn(){
   updateAuthUI();
   hideAuthGate();
   applyCompanySettingsToUI();
-  await pullProjectsFromRemote();
+  await Promise.all([pullProjectsFromRemote(), refreshPendingApprovalCounts()]);
   switchTab('dashboard');
 }
 
@@ -4569,7 +4574,7 @@ async function checkAuthAndInit(){
       currentAuthUser = session.user;
       updateAuthUI();
       hideAuthGate();
-      await pullProjectsFromRemote();
+      await Promise.all([pullProjectsFromRemote(), refreshPendingApprovalCounts()]);
       switchTab('dashboard');
     } else {
       showAuthGate();
