@@ -3012,6 +3012,14 @@ function buildBankPdf(proj){
     y = margin;
     drawColHeader();
   }
+  // A lighter continuation header for page breaks that happen BEFORE the line-item table starts
+  // (e.g. mid stress-test-table) — same slim company header, but without the "Line-Item Cost
+  // Detail" title and column bar, which only belong once that section actually begins.
+  function newPageGeneric(){
+    doc.addPage();
+    y = margin;
+    letterheadLight();
+  }
   function checkSpace(needed){
     if (y + needed > pageHeight - margin){
       newPage();
@@ -3114,6 +3122,16 @@ function buildBankPdf(proj){
     const fmtPct = n => (n > 0 ? '+' : '') + n;
     const rowH = 46;
     const padX = 16;
+    // Local page-space check — must track this function's own `ty`, not the outer `y` (which only
+    // gets updated by the caller after this whole function returns). Using the shared checkSpace()
+    // here was the bug: it silently compared against a stale y and never triggered a page break,
+    // so rows just kept drawing past the bottom of the page.
+    function ensureSpace(needed){
+      if (ty + needed > pageHeight - margin){
+        newPageGeneric();
+        ty = y;
+      }
+    }
     // column x-positions across contentWidth
     const c = {
       label: leftColX + padX,
@@ -3127,7 +3145,7 @@ function buildBankPdf(proj){
     };
 
     // light header labels, no black bar — matches the on-screen card aesthetic instead of a spreadsheet look
-    checkSpace(rowH + 16);
+    ensureSpace(rowH + 16);
     doc.setFont(FONT,'normal'); doc.setFontSize(6.6); doc.setTextColor(150,145,138);
     doc.text('SCENARIO', c.label, ty);
     doc.text('COST %', c.cost, ty, {align:'right'});
@@ -3143,7 +3161,7 @@ function buildBankPdf(proj){
     ty += 14;
 
     rows.forEach(r => {
-      checkSpace(rowH + 10);
+      ensureSpace(rowH + 10);
       const mc = r.marginPct>=20?[76,107,79]:(r.marginPct>=10?[138,109,59]:[166,71,60]);
 
       // rounded card-style row background + a left accent stripe colored by margin health
@@ -3216,12 +3234,13 @@ function buildBankPdf(proj){
   infoRow('Garage Bays:', p.garage||0, rightColX);
   y += 30;
 
-  // Cost & contingency block — builder cost basis only, no markup
+  // Cost block — builder cost basis only, no markup. Contingency lives in the stress test
+  // scenarios now instead of a fixed line here.
   doc.setFillColor(247,246,243);
   const boxH = 82;
   doc.roundedRect(margin, y, contentWidth, boxH, 7, 7, 'F');
   doc.setDrawColor(230,226,218); doc.roundedRect(margin, y, contentWidth, boxH, 7, 7, 'S');
-  const colW = contentWidth/4;
+  const colW = contentWidth/3;
   const cellPad = 14;
   const cell = (label, value, colIdx) => {
     const x = margin + cellPad + colIdx*colW;
@@ -3235,8 +3254,7 @@ function buildBankPdf(proj){
   };
   cell('Builder Cost', fmtMoney(calc.grandBuilder), 0);
   cell('Lot / Land Cost', fmtMoney(calc.lotCost), 1);
-  cell('Contingency', `${calc.contingencyPct}% \u2022 ${fmtMoney(calc.contingencyAmount)}`, 2);
-  cell('Total Cost (Build + Lot)', fmtMoney(calc.allInCost), 3);
+  cell('Total Cost (Build + Lot)', fmtMoney(calc.allInCost), 2);
   y += boxH + 26;
 
   y = drawScenarioCards(
