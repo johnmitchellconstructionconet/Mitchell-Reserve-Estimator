@@ -3120,8 +3120,8 @@ function openEditAttachmentModal(id){
           </div>
           <div style="display:flex; gap:24px; flex-wrap:wrap;">
             <div>
-              <button class="btn btn-sm" id="btnChooseSupportingDoc" type="button">+ Add PDF</button>
-              <input type="file" id="supportingDocFileInput" class="file-input" accept="application/pdf">
+              <button class="btn btn-sm" id="btnChooseSupportingDoc" type="button">+ Add PDF(s)</button>
+              <input type="file" id="supportingDocFileInput" class="file-input" accept="application/pdf" multiple>
             </div>
             <div style="display:flex; gap:8px; flex:1; min-width:220px;">
               <input id="supportingDocLinkInput" type="url" placeholder="https://... paste a link instead" style="flex:1; padding:7px 9px; border:1px solid var(--border); border-radius:6px; font-size:12.5px; background:var(--bg); color:var(--ink);">
@@ -3144,10 +3144,8 @@ function openEditAttachmentModal(id){
   document.getElementById('modalOverlay').addEventListener('click', (e) => { if (e.target.id === 'modalOverlay') closeModal(); });
   document.getElementById('btnChooseSupportingDoc').addEventListener('click', () => document.getElementById('supportingDocFileInput').click());
   document.getElementById('supportingDocFileInput').addEventListener('change', e => {
-    const file = e.target.files[0];
-    if (!file) return;
-    if (file.type !== 'application/pdf'){ alert('Please choose a PDF file.'); e.target.value = ''; return; }
-    addSupportingDocumentFile(id, file);
+    if (!e.target.files.length) return;
+    addSupportingDocumentFiles(id, e.target.files);
   });
   document.getElementById('btnAddSupportingDocLink').addEventListener('click', () => {
     const link = document.getElementById('supportingDocLinkInput').value.trim();
@@ -3254,7 +3252,8 @@ async function persistDocumentsArray(att){
   return true;
 }
 
-async function addSupportingDocumentFile(attId, file){
+async function addSupportingDocumentFile(attId, file, opts){
+  const silent = opts && opts.silent;
   const att = attachmentsCache.find(a => String(a.id) === String(attId));
   if (!att || !file) return;
   const proj = current();
@@ -3265,11 +3264,11 @@ async function addSupportingDocumentFile(attId, file){
     const safeName = file.name.replace(/[^a-z0-9.\-_]+/gi, '_');
     const path = `${(nameKey||'project').replace(/[^a-z0-9.\-_]+/gi,'_')}/${attId}-docs/${Date.now()}-${safeName}`;
     const { error } = await sbClient.storage.from(ATTACHMENTS_BUCKET).upload(path, file, { contentType: 'application/pdf' });
-    if (error){ alert('Upload failed: ' + error.message); return; }
+    if (error){ alert(`Upload failed for "${file.name}": ` + error.message); return; }
     doc.storagePath = path;
   } else {
     if (file.size > MAX_LOCAL_ATTACHMENT_BYTES){
-      alert(`That file is ${fmtBytes(file.size)} — local storage is capped at ${fmtBytes(MAX_LOCAL_ATTACHMENT_BYTES)} per file.`);
+      alert(`"${file.name}" is ${fmtBytes(file.size)} — local storage is capped at ${fmtBytes(MAX_LOCAL_ATTACHMENT_BYTES)} per file.`);
       return;
     }
     doc.fileDataUrl = await new Promise((resolve, reject) => {
@@ -3282,8 +3281,25 @@ async function addSupportingDocumentFile(attId, file){
 
   att.documents = [...(att.documents || []), doc];
   await persistDocumentsArray(att);
+  if (!silent){
+    renderAttachments();
+    openEditAttachmentModal(attId); // stay on the same entry so you can keep adding more
+  }
+}
+
+// Uploads a whole batch of PDFs (e.g. covenants + restrictions + survey, all selected at once) one
+// at a time — sequential rather than parallel, so a slow upload doesn't collide with the next one
+// writing to the same documents array — then refreshes the view once everything's done.
+async function addSupportingDocumentFiles(attId, fileList){
+  const files = Array.from(fileList || []).filter(f => f.type === 'application/pdf');
+  if (!files.length){ alert('Please choose PDF files.'); return; }
+  const btn = document.getElementById('btnChooseSupportingDoc');
+  for (let i = 0; i < files.length; i++){
+    if (btn) btn.textContent = `Uploading ${i+1} of ${files.length}...`;
+    await addSupportingDocumentFile(attId, files[i], { silent: true });
+  }
   renderAttachments();
-  openEditAttachmentModal(attId); // stay on the same entry so you can keep adding more
+  openEditAttachmentModal(attId);
 }
 
 async function addSupportingDocumentLink(attId, link, name){
