@@ -857,28 +857,6 @@ tr.subtotal-row td{
         <div class="field"><label>Role</label><input id="tmRole" type="text" placeholder="Designer / Selections"></div>
       </div>
       <button class="btn" id="btnAddTeamMember" style="margin-top:12px;">+ Add Team Member</button>
-
-      <details style="margin-top:18px;">
-        <summary style="cursor:pointer; font-size:12px; color:var(--gray); font-weight:600;">One-time setup SQL (run once in your Supabase SQL editor)</summary>
-        <pre id="teamSetupSql" style="background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:14px; font-size:11px; overflow-x:auto; margin-top:10px; white-space:pre-wrap;">create table if not exists team_members (
-  id uuid primary key default gen_random_uuid(),
-  name text not null,
-  email text not null,
-  role text,
-  created_at timestamptz default now()
-);
-
-alter table team_members enable row level security;
-
-create policy "Authenticated users can view team_members"
-  on team_members for select
-  using (auth.role() = 'authenticated');
-
-create policy "Authenticated users can manage team_members"
-  on team_members for all
-  using (auth.role() = 'authenticated')
-  with check (auth.role() = 'authenticated');</pre>
-      </details>
     </div>
   </div>
 
@@ -889,50 +867,6 @@ create policy "Authenticated users can manage team_members"
       anyone signed in sees the same list, matched to the project by its name. PDFs go to Supabase Storage; without this set up,
       comps/lots stay local to this browser only and won't show up for teammates or other devices.
     </p>
-    <details>
-      <summary style="cursor:pointer; font-size:12px; color:var(--gray); font-weight:600;">One-time setup SQL (run once in your Supabase SQL editor)</summary>
-      <pre style="background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:14px; font-size:11px; overflow-x:auto; margin-top:10px; white-space:pre-wrap;">insert into storage.buckets (id, name, public)
-values ('project-attachments', 'project-attachments', false)
-on conflict (id) do nothing;
-
-create policy "Authenticated users can view attachments"
-  on storage.objects for select
-  using (bucket_id = 'project-attachments' and auth.role() = 'authenticated');
-
-create policy "Authenticated users can upload attachments"
-  on storage.objects for insert
-  with check (bucket_id = 'project-attachments' and auth.role() = 'authenticated');
-
-create policy "Authenticated users can delete attachments"
-  on storage.objects for delete
-  using (bucket_id = 'project-attachments' and auth.role() = 'authenticated');
-
-create table if not exists project_attachments (
-  id uuid primary key default gen_random_uuid(),
-  project_name text not null,
-  category text not null,
-  name text not null,
-  notes text,
-  link text,
-  storage_path text,
-  size_bytes bigint,
-  status text default 'review',
-  include_in_bank_pdf boolean default true,
-  created_by text,
-  created_at timestamptz default now()
-);
-
-alter table project_attachments enable row level security;
-
-create policy "Authenticated users can view project_attachments"
-  on project_attachments for select
-  using (auth.role() = 'authenticated');
-
-create policy "Authenticated users can manage project_attachments"
-  on project_attachments for all
-  using (auth.role() = 'authenticated')
-  with check (auth.role() = 'authenticated');</pre>
-    </details>
   </div>
 
   <div style="display:flex; gap:10px;">
