@@ -2833,10 +2833,12 @@ async function refreshPendingApprovalCounts(){
 
 function pendingApprovalCountForProject(proj){
   const nameKey = projectNameKey(proj).toLowerCase();
-  // Shared mode (Supabase connected + named project): trust the batch-fetched counts, even if 0/undefined.
-  if (sbClient && nameKey) return pendingApprovalCounts[nameKey] || 0;
-  // Local-only fallback for projects without Supabase or without a name yet.
-  return (proj.attachments || []).filter(a => (a.status || 'review') === 'review').length;
+  // Sum both sources rather than picking one — if this project's comps/lots are sitting in the
+  // shared table, count those; if some (or all) are still local (e.g. the shared table wasn't set
+  // up yet when they were added), count those too. Safer to double-check both than silently miss one.
+  const remoteCount = (sbClient && nameKey) ? (pendingApprovalCounts[nameKey] || 0) : 0;
+  const localCount = (proj.attachments || []).filter(a => (a.status || 'review') === 'review').length;
+  return remoteCount + localCount;
 }
 
 function updateAttStorageStatus(nameKey){
@@ -4590,6 +4592,17 @@ document.addEventListener('DOMContentLoaded', () => {
 // the tab/window closes), so a project is never lost.
 window.addEventListener('beforeunload', saveAppState);
 setInterval(saveAppState, 5000);
+
+// Auto-sync with the team in the background — no manual "Sync Now" click required. Only refreshes
+// the dashboard's own display when you're actually looking at it, so it never yanks you around.
+setInterval(() => {
+  if (!sbClient) return;
+  Promise.all([pullProjectsFromRemote(), refreshPendingApprovalCounts()]).then(() => {
+    if (document.getElementById('dashboardView') && document.getElementById('dashboardView').style.display !== 'none'){
+      renderDashboard();
+    }
+  });
+}, 20000);
 
 </script>
 
