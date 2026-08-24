@@ -3236,13 +3236,12 @@ function buildBankPdf(proj){
   infoRow('Garage Bays:', p.garage||0, rightColX);
   y += 30;
 
-  // Cost block — builder cost basis only, no markup. Contingency lives in the stress test
-  // scenarios now instead of a fixed line here.
+  // Cost & contingency block — builder cost basis only, no markup
   doc.setFillColor(247,246,243);
   const boxH = 82;
   doc.roundedRect(margin, y, contentWidth, boxH, 7, 7, 'F');
   doc.setDrawColor(230,226,218); doc.roundedRect(margin, y, contentWidth, boxH, 7, 7, 'S');
-  const colW = contentWidth/3;
+  const colW = contentWidth/4;
   const cellPad = 14;
   const cell = (label, value, colIdx) => {
     const x = margin + cellPad + colIdx*colW;
@@ -3256,7 +3255,8 @@ function buildBankPdf(proj){
   };
   cell('Builder Cost', fmtMoney(calc.grandBuilder), 0);
   cell('Lot / Land Cost', fmtMoney(calc.lotCost), 1);
-  cell('Total Cost (Build + Lot)', fmtMoney(calc.allInCost), 2);
+  cell('Contingency', `${calc.contingencyPct}% \u2022 ${fmtMoney(calc.contingencyAmount)}`, 2);
+  cell('Total Cost (Build + Lot)', fmtMoney(calc.allInCost), 3);
   y += boxH + 26;
 
   y = drawScenarioCards(
