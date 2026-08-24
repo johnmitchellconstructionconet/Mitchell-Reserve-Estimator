@@ -672,12 +672,12 @@ tr.subtotal-row td{
   <div class="dash-head">
     <div>
       <h1>Comps &amp; Lots</h1>
-      <p>Attach comparable sales and potential lots for this project — internal reference, and includable in the Bank / Lender PDF export.</p>
+      <p>Attach comparable sales and potential lots for this project — visible to anyone signed in (when Supabase is connected), and includable in the Bank / Lender PDF export.</p>
     </div>
   </div>
 
   <div class="panel" style="margin-bottom:20px;">
-    <h2>Upload a PDF</h2>
+    <h2>Add a Comp or Lot</h2>
     <div class="grid-info">
       <div class="field"><label>Category</label>
         <select id="attCategory">
@@ -688,12 +688,25 @@ tr.subtotal-row td{
       <div class="field"><label>Name / Address</label><input id="attName" type="text" placeholder="e.g. 412 Ridgeline Dr — Sold $712k"></div>
       <div class="field"><label>Notes</label><input id="attNotes" type="text" placeholder="Optional — sqft, sale date, asking price, etc."></div>
     </div>
-    <div style="margin-top:14px; display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-      <button class="btn btn-gold" id="btnChooseAttFile">Choose PDF File</button>
-      <input type="file" id="attFileInput" class="file-input" accept="application/pdf">
-      <span id="attChosenFileName" style="font-size:12.5px; color:var(--gray);"></span>
+
+    <div style="margin-top:16px; padding-top:16px; border-top:1px solid var(--border); display:flex; gap:24px; flex-wrap:wrap;">
+      <div style="flex:1; min-width:240px;">
+        <label style="display:block; font-size:10.5px; font-weight:600; color:var(--gray); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:8px;">Attach a PDF</label>
+        <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+          <button class="btn btn-gold" id="btnChooseAttFile">Choose PDF File</button>
+          <input type="file" id="attFileInput" class="file-input" accept="application/pdf">
+          <span id="attChosenFileName" style="font-size:12.5px; color:var(--gray);"></span>
+        </div>
+      </div>
+      <div style="flex:1; min-width:240px;">
+        <label style="display:block; font-size:10.5px; font-weight:600; color:var(--gray); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:8px;">Or Paste a Link Instead</label>
+        <div style="display:flex; gap:8px;">
+          <input id="attLinkInput" type="url" placeholder="https://... (MLS, Zillow, Google Drive, etc.)" style="flex:1; padding:9px 11px; border:1px solid var(--border); border-radius:8px; font-size:13.5px; background:var(--bg); color:var(--ink);">
+          <button class="btn btn-gold" id="btnAddAttLink">Add Link</button>
+        </div>
+      </div>
     </div>
-    <p id="attStorageStatus" style="font-size:11.5px; color:var(--gray); margin-top:12px;"></p>
+    <p id="attStorageStatus" style="font-size:11.5px; color:var(--gray); margin-top:14px;"></p>
   </div>
 
   <div class="section-label">Comps (Comparable Sales)</div>
@@ -864,8 +877,9 @@ create policy "Authenticated users can manage team_members"
   <div class="panel settings-section">
     <h3>Comps &amp; Lots Storage</h3>
     <p style="color:var(--gray); font-size:12px; margin-top:-8px; margin-bottom:14px;">
-      Comp and potential-lot PDFs attached inside a project are uploaded to a Supabase Storage bucket so they don't bloat your browser's local storage.
-      Without this set up, files under 2MB still work — they're just stored locally in this browser instead (and won't show up on other devices).
+      When Supabase is connected, comps and potential lots (including their approval status and notes) are shared through Supabase —
+      anyone signed in sees the same list, matched to the project by its name. PDFs go to Supabase Storage; without this set up,
+      comps/lots stay local to this browser only and won't show up for teammates or other devices.
     </p>
     <details>
       <summary style="cursor:pointer; font-size:12px; color:var(--gray); font-weight:600;">One-time setup SQL (run once in your Supabase SQL editor)</summary>
@@ -883,7 +897,33 @@ create policy "Authenticated users can upload attachments"
 
 create policy "Authenticated users can delete attachments"
   on storage.objects for delete
-  using (bucket_id = 'project-attachments' and auth.role() = 'authenticated');</pre>
+  using (bucket_id = 'project-attachments' and auth.role() = 'authenticated');
+
+create table if not exists project_attachments (
+  id uuid primary key default gen_random_uuid(),
+  project_name text not null,
+  category text not null,
+  name text not null,
+  notes text,
+  link text,
+  storage_path text,
+  size_bytes bigint,
+  status text default 'review',
+  include_in_bank_pdf boolean default true,
+  created_by text,
+  created_at timestamptz default now()
+);
+
+alter table project_attachments enable row level security;
+
+create policy "Authenticated users can view project_attachments"
+  on project_attachments for select
+  using (auth.role() = 'authenticated');
+
+create policy "Authenticated users can manage project_attachments"
+  on project_attachments for all
+  using (auth.role() = 'authenticated')
+  with check (auth.role() = 'authenticated');</pre>
     </details>
   </div>
 
@@ -2660,7 +2700,10 @@ function render(){
 
 // ---------- Comps & Lots attachments ----------
 const ATTACHMENTS_BUCKET = 'project-attachments';
+const ATTACHMENTS_TABLE = 'project_attachments';
 const MAX_LOCAL_ATTACHMENT_BYTES = 2 * 1024 * 1024; // 2MB cap when Supabase Storage isn't available
+let attachmentsCache = [];      // normalized, in-memory list backing whatever's currently rendered
+let attachmentsSharedMode = false; // true when this render pulled from the shared Supabase table
 
 function fmtBytes(n){
   if (!n && n !== 0) return '';
@@ -2669,16 +2712,37 @@ function fmtBytes(n){
   return (n/1024/1024).toFixed(1) + ' MB';
 }
 
-function updateAttStorageStatus(){
+function projectNameKey(proj){
+  return (proj.project.name || '').trim();
+}
+
+function updateAttStorageStatus(nameKey){
   const el = document.getElementById('attStorageStatus');
   if (!el) return;
-  if (sbClient){
-    el.textContent = 'Connected to Supabase Storage — uploads go to the cloud and are available on any device you sign into.';
+  if (!sbClient){
+    el.textContent = `Not connected to Supabase — comps/lots here are local to this browser only and PDFs are capped at ${fmtBytes(MAX_LOCAL_ATTACHMENT_BYTES)}. Connect Supabase in Company Settings so your team can see the same list.`;
+    el.style.color = 'var(--gray)';
+  } else if (!nameKey){
+    el.textContent = 'Give this project a name (in Project Information) so comps/lots can be shared and matched correctly across your team.';
+    el.style.color = 'var(--attn-text)';
+  } else if (attachmentsSharedMode){
+    el.textContent = `Shared via Supabase — anyone signed in sees this same list for "${nameKey}".`;
     el.style.color = 'var(--good)';
   } else {
-    el.textContent = `No Supabase Storage connected — PDFs under ${fmtBytes(MAX_LOCAL_ATTACHMENT_BYTES)} will be stored locally in this browser only. Connect Supabase in Company Settings for larger files and cross-device access.`;
-    el.style.color = 'var(--gray)';
+    el.textContent = 'Supabase is connected, but the shared table isn\'t set up yet — see "Comps & Lots Storage" in Company Settings. Using local storage for now.';
+    el.style.color = 'var(--attn-text)';
   }
+}
+
+// Normalizes a Supabase row into the same shape used for locally-stored attachments, so rendering
+// and action handlers don't need to know or care which source an item came from.
+function normalizeRemoteAttachment(row){
+  return {
+    id: row.id, name: row.name, category: row.category, notes: row.notes || '', link: row.link || '',
+    storagePath: row.storage_path || '', sizeBytes: row.size_bytes || 0, status: row.status || 'review',
+    includeInBankPdf: row.include_in_bank_pdf !== false, uploadedAt: new Date(row.created_at).getTime(),
+    source: 'remote'
+  };
 }
 
 async function uploadAttachment(file){
@@ -2688,27 +2752,31 @@ async function uploadAttachment(file){
   const category = document.getElementById('attCategory').value;
   const name = document.getElementById('attName').value.trim() || file.name;
   const notes = document.getElementById('attNotes').value.trim();
-  const record = { id: proj.nextAttachmentId++, name, category, notes, uploadedAt: Date.now(), sizeBytes: file.size, includeInBankPdf: true, status: 'review' };
+  const nameKey = projectNameKey(proj);
 
-  if (sbClient){
+  if (sbClient && nameKey && attachmentsSharedMode){
     const safeName = file.name.replace(/[^a-z0-9.\-_]+/gi, '_');
-    const path = `${proj.id}/${record.id}-${safeName}`;
-    const { error } = await sbClient.storage.from(ATTACHMENTS_BUCKET).upload(path, file, { contentType: 'application/pdf' });
-    if (!error){
-      record.storagePath = path;
-      proj.attachments.push(record);
-      finishAttachmentUpload();
+    const path = `${nameKey.replace(/[^a-z0-9.\-_]+/gi,'_')}/${Date.now()}-${safeName}`;
+    const { error: upErr } = await sbClient.storage.from(ATTACHMENTS_BUCKET).upload(path, file, { contentType: 'application/pdf' });
+    if (upErr){
+      alert('Upload failed: ' + upErr.message);
       return;
     }
-    console.warn('Supabase Storage upload failed, falling back to local storage:', error.message);
-  }
-
-  if (file.size > MAX_LOCAL_ATTACHMENT_BYTES){
-    alert(`This file is ${fmtBytes(file.size)}. Without Supabase Storage connected (or if the upload failed), local files are capped at ${fmtBytes(MAX_LOCAL_ATTACHMENT_BYTES)} to protect your other saved projects. Connect Supabase Storage in Company Settings for larger files, or upload a smaller PDF.`);
-    proj.nextAttachmentId--; // give the id back since nothing was actually saved
+    const { error: insErr } = await sbClient.from(ATTACHMENTS_TABLE).insert([{
+      project_name: nameKey, category, name, notes, storage_path: path, size_bytes: file.size,
+      status: 'review', include_in_bank_pdf: true, created_by: currentAuthUser ? currentAuthUser.email : null
+    }]);
+    if (insErr){ alert('Could not save attachment record: ' + insErr.message); return; }
+    finishAttachmentUpload();
     return;
   }
 
+  // Local fallback — no Supabase, no project name yet, or the shared table isn't set up
+  if (file.size > MAX_LOCAL_ATTACHMENT_BYTES){
+    alert(`This file is ${fmtBytes(file.size)}. Without shared Supabase Storage active, local files are capped at ${fmtBytes(MAX_LOCAL_ATTACHMENT_BYTES)}. Connect Supabase (and name this project) for larger files and team-wide visibility.`);
+    return;
+  }
+  const record = { id: proj.nextAttachmentId++, name, category, notes, uploadedAt: Date.now(), sizeBytes: file.size, includeInBankPdf: true, status: 'review' };
   const reader = new FileReader();
   reader.onload = (e) => {
     record.fileDataUrl = e.target.result;
@@ -2717,6 +2785,35 @@ async function uploadAttachment(file){
   };
   reader.onerror = () => alert('Could not read that file.');
   reader.readAsDataURL(file);
+}
+
+async function addAttachmentLink(){
+  const proj = current();
+  if (!proj) return;
+  const link = document.getElementById('attLinkInput').value.trim();
+  if (!link){ alert('Paste a link first.'); return; }
+  if (!/^https?:\/\//i.test(link)){ alert('Links should start with http:// or https://'); return; }
+
+  const category = document.getElementById('attCategory').value;
+  const name = document.getElementById('attName').value.trim() || link;
+  const notes = document.getElementById('attNotes').value.trim();
+  const nameKey = projectNameKey(proj);
+
+  if (sbClient && nameKey && attachmentsSharedMode){
+    const { error } = await sbClient.from(ATTACHMENTS_TABLE).insert([{
+      project_name: nameKey, category, name, notes, link,
+      status: 'review', include_in_bank_pdf: true, created_by: currentAuthUser ? currentAuthUser.email : null
+    }]);
+    if (error){ alert('Could not save link: ' + error.message); return; }
+    document.getElementById('attLinkInput').value = '';
+    finishAttachmentUpload();
+    return;
+  }
+
+  const record = { id: proj.nextAttachmentId++, name, category, notes, link, uploadedAt: Date.now(), includeInBankPdf: true, status: 'review' };
+  proj.attachments.push(record);
+  document.getElementById('attLinkInput').value = '';
+  finishAttachmentUpload();
 }
 
 function finishAttachmentUpload(){
@@ -2729,28 +2826,61 @@ function finishAttachmentUpload(){
 }
 
 async function viewAttachment(att){
-  if (att.storagePath && sbClient){
+  if (att.link){
+    window.open(att.link, '_blank');
+  } else if (att.storagePath && sbClient){
     const { data, error } = await sbClient.storage.from(ATTACHMENTS_BUCKET).createSignedUrl(att.storagePath, 3600);
     if (error){ alert('Could not open file: ' + error.message); return; }
     window.open(data.signedUrl, '_blank');
   } else if (att.fileDataUrl){
     window.open(att.fileDataUrl, '_blank');
   } else {
-    alert('This file is unavailable — it may have been uploaded to Supabase Storage on another device/session.');
+    alert('This file is unavailable — it may have been uploaded on another device/session.');
   }
 }
 
 async function deleteAttachment(id){
   const proj = current();
-  const att = proj.attachments.find(a => a.id === id);
+  const att = attachmentsCache.find(a => String(a.id) === String(id));
   if (!att) return;
   if (!confirm(`Remove "${att.name}"? This can't be undone.`)) return;
-  if (att.storagePath && sbClient){
-    await sbClient.storage.from(ATTACHMENTS_BUCKET).remove([att.storagePath]);
+
+  if (att.source === 'remote' && sbClient){
+    if (att.storagePath) await sbClient.storage.from(ATTACHMENTS_BUCKET).remove([att.storagePath]);
+    const { error } = await sbClient.from(ATTACHMENTS_TABLE).delete().eq('id', id);
+    if (error){ alert('Could not remove: ' + error.message); return; }
+  } else {
+    proj.attachments = proj.attachments.filter(a => a.id !== id);
+    saveAppState();
   }
-  proj.attachments = proj.attachments.filter(a => a.id !== id);
   renderAttachments();
-  saveAppState();
+}
+
+async function setAttachmentStatus(id, status){
+  const proj = current();
+  const att = attachmentsCache.find(a => String(a.id) === String(id));
+  if (!att) return;
+  if (att.source === 'remote' && sbClient){
+    const { error } = await sbClient.from(ATTACHMENTS_TABLE).update({ status }).eq('id', id);
+    if (error){ alert('Could not update status: ' + error.message); return; }
+  } else {
+    const localAtt = proj.attachments.find(a => a.id === id);
+    if (localAtt) localAtt.status = status;
+    saveAppStateDebounced();
+  }
+  renderAttachments();
+}
+
+async function setAttachmentInclude(id, include){
+  const proj = current();
+  const att = attachmentsCache.find(a => String(a.id) === String(id));
+  if (!att) return;
+  if (att.source === 'remote' && sbClient){
+    await sbClient.from(ATTACHMENTS_TABLE).update({ include_in_bank_pdf: include }).eq('id', id);
+  } else {
+    const localAtt = proj.attachments.find(a => a.id === id);
+    if (localAtt){ localAtt.includeInBankPdf = include; saveAppStateDebounced(); }
+  }
 }
 
 const ATT_STATUS_GROUPS = [
@@ -2759,10 +2889,26 @@ const ATT_STATUS_GROUPS = [
   { key: 'rejected', label: 'Rejected' }
 ];
 
-function renderAttachments(){
+async function renderAttachments(){
   const proj = current();
   if (!proj) return;
-  updateAttStorageStatus();
+  const nameKey = projectNameKey(proj);
+
+  attachmentsSharedMode = false;
+  if (sbClient && nameKey){
+    const { data, error } = await sbClient.from(ATTACHMENTS_TABLE).select('*').eq('project_name', nameKey).order('created_at', { ascending: true });
+    if (!error){
+      attachmentsCache = (data || []).map(normalizeRemoteAttachment);
+      attachmentsSharedMode = true;
+    } else {
+      console.warn('Shared comps/lots table unavailable, using local storage for this project:', error.message);
+      attachmentsCache = proj.attachments.map(a => Object.assign({ source: 'local' }, a));
+    }
+  } else {
+    attachmentsCache = proj.attachments.map(a => Object.assign({ source: 'local' }, a));
+  }
+
+  updateAttStorageStatus(nameKey);
 
   const attRowHtml = (att) => {
     const nextActions = {
@@ -2770,14 +2916,20 @@ function renderAttachments(){
       approved: `<button class="btn btn-sm" data-att-status="${att.id}" data-status-to="review">Back to Review</button><button class="btn btn-sm btn-danger" data-att-status="${att.id}" data-status-to="rejected">Reject</button>`,
       rejected: `<button class="btn btn-sm" data-att-status="${att.id}" data-status-to="review">Back to Review</button><button class="btn btn-sm" data-att-status="${att.id}" data-status-to="approved">Approve</button>`
     };
+    const linkIcon = att.link
+      ? `<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M6.5 9.5 9.5 6.5M6 4.5 4.2 6.3a2.5 2.5 0 0 0 3.5 3.5L9.5 8M10 11.5l1.8-1.8a2.5 2.5 0 0 0-3.5-3.5L6.5 8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>`
+      : `<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M3.5 1.5h6l3 3v10a1 1 0 0 1-1 1h-8a1 1 0 0 1-1-1v-12a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.3"/><path d="M9 1.5v3h3" stroke="currentColor" stroke-width="1.3"/></svg>`;
+    const metaBits = [];
+    if (att.notes) metaBits.push(escapeAttr(att.notes));
+    if (att.link) metaBits.push('Link'); else metaBits.push(fmtBytes(att.sizeBytes));
+    metaBits.push(new Date(att.uploadedAt).toLocaleDateString());
+    metaBits.push(att.source === 'remote' ? 'Shared' : (att.storagePath ? 'Cloud' : 'Local'));
     return `
       <div class="att-row">
-        <div class="att-icon">
-          <svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M3.5 1.5h6l3 3v10a1 1 0 0 1-1 1h-8a1 1 0 0 1-1-1v-12a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.3"/><path d="M9 1.5v3h3" stroke="currentColor" stroke-width="1.3"/></svg>
-        </div>
+        <div class="att-icon">${linkIcon}</div>
         <div class="att-info">
           <div class="att-name">${escapeAttr(att.name)}</div>
-          <div class="att-meta">${att.notes ? escapeAttr(att.notes) + ' — ' : ''}${fmtBytes(att.sizeBytes)} · ${new Date(att.uploadedAt).toLocaleDateString()}${att.storagePath ? ' · Cloud' : ' · Local'}</div>
+          <div class="att-meta">${metaBits.join(' · ')}</div>
         </div>
         <label class="att-include-toggle">
           <input type="checkbox" ${att.includeInBankPdf ? 'checked' : ''} data-att-include="${att.id}">
@@ -2785,7 +2937,7 @@ function renderAttachments(){
         </label>
         <div class="att-actions">
           ${nextActions[att.status] || nextActions.review}
-          <button class="btn btn-sm" data-att-view="${att.id}">View</button>
+          <button class="btn btn-sm" data-att-view="${att.id}">${att.link ? 'Open Link' : 'View'}</button>
           <button class="btn btn-sm btn-danger" data-att-delete="${att.id}">Remove</button>
         </div>
       </div>
@@ -2794,7 +2946,7 @@ function renderAttachments(){
 
   const renderGroup = (containerId, category, emptyText) => {
     const container = document.getElementById(containerId);
-    const items = proj.attachments.filter(a => a.category === category);
+    const items = attachmentsCache.filter(a => a.category === category);
     if (!items.length){
       container.innerHTML = `<div class="att-empty">${emptyText}</div>`;
       return;
@@ -2835,6 +2987,8 @@ function attachCompsEvents(){
     document.getElementById('attChosenFileName').textContent = `${file.name} (${fmtBytes(file.size)})`;
     uploadAttachment(file);
   });
+  document.getElementById('btnAddAttLink').addEventListener('click', () => addAttachmentLink());
+  document.getElementById('attLinkInput').addEventListener('keydown', e => { if (e.key === 'Enter') addAttachmentLink(); });
 
   const compsView = document.getElementById('compsView');
   compsView.addEventListener('click', e => {
@@ -2848,33 +3002,19 @@ function attachCompsEvents(){
       return;
     }
     const statusBtn = e.target.closest('[data-att-status]');
-    if (statusBtn){
-      const proj = current();
-      const att = proj.attachments.find(a => a.id === Number(statusBtn.dataset.attStatus));
-      if (att){
-        att.status = statusBtn.dataset.statusTo;
-        renderAttachments();
-        saveAppStateDebounced();
-      }
-      return;
-    }
+    if (statusBtn){ setAttachmentStatus(statusBtn.dataset.attStatus, statusBtn.dataset.statusTo); return; }
     const viewBtn = e.target.closest('[data-att-view]');
     if (viewBtn){
-      const proj = current();
-      const att = proj.attachments.find(a => a.id === Number(viewBtn.dataset.attView));
+      const att = attachmentsCache.find(a => String(a.id) === String(viewBtn.dataset.attView));
       if (att) viewAttachment(att);
       return;
     }
     const delBtn = e.target.closest('[data-att-delete]');
-    if (delBtn){ deleteAttachment(Number(delBtn.dataset.attDelete)); }
+    if (delBtn){ deleteAttachment(delBtn.dataset.attDelete); }
   });
   compsView.addEventListener('change', e => {
     const includeBox = e.target.closest('[data-att-include]');
-    if (includeBox){
-      const proj = current();
-      const att = proj.attachments.find(a => a.id === Number(includeBox.dataset.attInclude));
-      if (att){ att.includeInBankPdf = includeBox.checked; saveAppStateDebounced(); }
-    }
+    if (includeBox){ setAttachmentInclude(includeBox.dataset.attInclude, includeBox.checked); }
   });
 }
 
@@ -3865,7 +4005,17 @@ async function buildBankPdf(proj){
 
   const safeName = (p.name || 'mcd-estimate').replace(/[^a-z0-9\-_]+/gi,'_');
   const filename = `${safeName}_Bank_Cost_Margin_Package.pdf`;
-  const attachmentsToInclude = (proj.attachments || []).filter(a => a.includeInBankPdf);
+
+  // Pull comps/lots from whichever source is actually active for this project (shared Supabase
+  // table, or local) — not just proj.attachments, since shared-mode data doesn't live there.
+  let allAttachments = proj.attachments || [];
+  const nameKey = projectNameKey(proj);
+  if (sbClient && nameKey){
+    const { data, error } = await sbClient.from(ATTACHMENTS_TABLE).select('*').eq('project_name', nameKey);
+    if (!error) allAttachments = (data || []).map(normalizeRemoteAttachment);
+  }
+  // Only real PDFs can be merged into a PDF — link-only attachments (MLS links, etc.) can't be, so skip those here.
+  const attachmentsToInclude = allAttachments.filter(a => a.includeInBankPdf && (a.storagePath || a.fileDataUrl));
 
   if (!attachmentsToInclude.length || !window.PDFLib){
     if (attachmentsToInclude.length && !window.PDFLib){
