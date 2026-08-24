@@ -112,6 +112,16 @@ h1,h2,h3,h4{font-family:var(--app-font); font-weight:700; letter-spacing:-0.01em
 .stat-card-lg .stat-value{font-size:34px; font-weight:800; letter-spacing:-0.02em; color:var(--ink); line-height:1;}
 .section-label{font-size:11px; text-transform:uppercase; letter-spacing:0.08em; color:var(--gray); font-weight:700; margin:28px 0 12px;}
 
+/* ---------- Comps & Lots attachments ---------- */
+.att-row{display:flex; align-items:center; gap:14px; background:var(--white); border:1px solid var(--border); border-radius:10px; padding:14px 16px; margin-bottom:10px; box-shadow:var(--shadow);}
+.att-icon{width:36px; height:36px; border-radius:8px; background:var(--bg); display:flex; align-items:center; justify-content:center; flex-shrink:0; color:var(--gray);}
+.att-info{flex:1; min-width:0;}
+.att-info .att-name{font-weight:700; font-size:13.5px; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.att-info .att-meta{font-size:11.5px; color:var(--gray); margin-top:2px;}
+.att-include-toggle{display:flex; align-items:center; gap:6px; font-size:11px; color:var(--gray); white-space:nowrap; cursor:pointer;}
+.att-actions{display:flex; gap:8px; flex-shrink:0;}
+.att-empty{font-size:12.5px; color:var(--gray-light); font-style:italic; padding:6px 0 20px;}
+
 .tabs{display:flex; gap:3px; padding:14px 28px; background:var(--white); border-bottom:1px solid var(--border);}
 .tab{
   padding:9px 16px; font-size:13px; font-weight:600; color:var(--gray); cursor:pointer;
@@ -380,7 +390,7 @@ tr.subtotal-row td{
   body{background:white;}
   .sidebar, .content-topbar, .tabs, .report-controls, .no-print{display:none !important;}
   #reportView{display:block !important; box-shadow:none; border:none; padding:0; max-width:100%;}
-  .main, #appView, #dashboardView, #poView, #settingsView{display:none !important;}
+  .main, #appView, #dashboardView, #poView, #settingsView, #compsView{display:none !important;}
   .report-category{page-break-inside:auto;}
   .report-category .allocated{page-break-inside:avoid; break-inside:avoid;}
 }
@@ -476,6 +486,10 @@ tr.subtotal-row td{
       <div class="nav-item" data-tab="polist" id="navPoList">
         <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><rect x="3" y="2" width="10" height="12.5" rx="1.2" stroke="currentColor" stroke-width="1.3"/><path d="M6 1.2h4v1.6H6z" stroke="currentColor" stroke-width="1.2"/><path d="M5.5 7l1.3 1.3L9.5 5.6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M5.5 11h5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
         Bid List &amp; POs
+      </div>
+      <div class="nav-item" data-tab="comps" id="navComps">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M2 4a1.5 1.5 0 0 1 1.5-1.5h3l1.3 1.5H12.5A1.5 1.5 0 0 1 14 5.5v6A1.5 1.5 0 0 1 12.5 13h-9A1.5 1.5 0 0 1 2 11.5Z" stroke="currentColor" stroke-width="1.3"/></svg>
+        Comps &amp; Lots
       </div>
     </nav>
 
@@ -644,6 +658,41 @@ tr.subtotal-row td{
   </div>
 </div>
 
+<div id="compsView" class="main" style="display:none;">
+  <div class="dash-head">
+    <div>
+      <h1>Comps &amp; Lots</h1>
+      <p>Attach comparable sales and potential lots for this project — internal reference, and includable in the Bank / Lender PDF export.</p>
+    </div>
+  </div>
+
+  <div class="panel" style="margin-bottom:20px;">
+    <h2>Upload a PDF</h2>
+    <div class="grid-info">
+      <div class="field"><label>Category</label>
+        <select id="attCategory">
+          <option value="comp">Comp (Comparable Sale)</option>
+          <option value="lot">Potential Lot</option>
+        </select>
+      </div>
+      <div class="field"><label>Name / Address</label><input id="attName" type="text" placeholder="e.g. 412 Ridgeline Dr — Sold $712k"></div>
+      <div class="field"><label>Notes</label><input id="attNotes" type="text" placeholder="Optional — sqft, sale date, asking price, etc."></div>
+    </div>
+    <div style="margin-top:14px; display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+      <button class="btn btn-gold" id="btnChooseAttFile">Choose PDF File</button>
+      <input type="file" id="attFileInput" class="file-input" accept="application/pdf">
+      <span id="attChosenFileName" style="font-size:12.5px; color:var(--gray);"></span>
+    </div>
+    <p id="attStorageStatus" style="font-size:11.5px; color:var(--gray); margin-top:12px;"></p>
+  </div>
+
+  <div class="section-label">Comps (Comparable Sales)</div>
+  <div id="compsListComp"></div>
+
+  <div class="section-label">Potential Lots</div>
+  <div id="compsListLot"></div>
+</div>
+
 <div id="settingsView" class="main" style="display:none;">
   <div class="dash-head">
     <div>
@@ -763,6 +812,32 @@ create policy "Authenticated users can manage team_members"
   with check (auth.role() = 'authenticated');</pre>
       </details>
     </div>
+  </div>
+
+  <div class="panel settings-section">
+    <h3>Comps &amp; Lots Storage</h3>
+    <p style="color:var(--gray); font-size:12px; margin-top:-8px; margin-bottom:14px;">
+      Comp and potential-lot PDFs attached inside a project are uploaded to a Supabase Storage bucket so they don't bloat your browser's local storage.
+      Without this set up, files under 2MB still work — they're just stored locally in this browser instead (and won't show up on other devices).
+    </p>
+    <details>
+      <summary style="cursor:pointer; font-size:12px; color:var(--gray); font-weight:600;">One-time setup SQL (run once in your Supabase SQL editor)</summary>
+      <pre style="background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:14px; font-size:11px; overflow-x:auto; margin-top:10px; white-space:pre-wrap;">insert into storage.buckets (id, name, public)
+values ('project-attachments', 'project-attachments', false)
+on conflict (id) do nothing;
+
+create policy "Authenticated users can view attachments"
+  on storage.objects for select
+  using (bucket_id = 'project-attachments' and auth.role() = 'authenticated');
+
+create policy "Authenticated users can upload attachments"
+  on storage.objects for insert
+  with check (bucket_id = 'project-attachments' and auth.role() = 'authenticated');
+
+create policy "Authenticated users can delete attachments"
+  on storage.objects for delete
+  using (bucket_id = 'project-attachments' and auth.role() = 'authenticated');</pre>
+    </details>
   </div>
 
   <div style="display:flex; gap:10px;">
@@ -1163,6 +1238,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var n,r,i,a,
 </script>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" onerror="console.error('Failed to load supabase-js from CDN — check network/ad-blocker/CSP.')"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js" onerror="console.error('Failed to load pdf-lib from CDN — check network/ad-blocker/CSP.')"></script>
 
 <script>
 // ============================================================
@@ -1217,6 +1293,8 @@ function hydrateProject(proj){
   if (proj.status === undefined) proj.status = 'active';
   if (proj.stressSnapshots === undefined) proj.stressSnapshots = [];
   if (proj.nextStressSnapshotId === undefined) proj.nextStressSnapshotId = (proj.stressSnapshots.length || 0) + 1;
+  if (proj.attachments === undefined) proj.attachments = [];
+  if (proj.nextAttachmentId === undefined) proj.nextAttachmentId = (proj.attachments.length || 0) + 1;
   return proj;
 }
 
@@ -1360,7 +1438,9 @@ function newProjectShell(name, sqft){
     nextPoRowId: Math.max(...poList.map(r=>r.id), 0) + 1,
     nextPoNumber: 1001,
     stressSnapshots: [],     // saved "Scenario 1, 2, 3..." stress test snapshots pushed to the lender PDF
-    nextStressSnapshotId: 1
+    nextStressSnapshotId: 1,
+    attachments: [],         // comps & potential lots — PDFs attached for internal use and lender export
+    nextAttachmentId: 1
   };
 }
 
@@ -2379,7 +2459,7 @@ function loadProjectFile(e){
 
 // ---------- Tabs ----------
 function switchTab(tab){
-  if ((tab === 'app' || tab === 'report' || tab === 'polist') && !current()){
+  if ((tab === 'app' || tab === 'report' || tab === 'polist' || tab === 'comps') && !current()){
     tab = 'dashboard';
   }
   if (tab === 'dashboard'){ app.activeId = null; } // clear BEFORE checking hasProject below, or the sidebar still thinks a project is open
@@ -2395,6 +2475,7 @@ function switchTab(tab){
   document.getElementById('appView').style.display = tab==='app' ? 'block' : 'none';
   document.getElementById('reportView').style.display = tab==='report' ? 'block' : 'none';
   document.getElementById('poView').style.display = tab==='polist' ? 'block' : 'none';
+  document.getElementById('compsView').style.display = tab==='comps' ? 'block' : 'none';
   document.getElementById('settingsView').style.display = tab==='settings' ? 'block' : 'none';
 
   document.getElementById('btnSaveProject').disabled = !current();
@@ -2404,6 +2485,7 @@ function switchTab(tab){
   if (tab === 'app') render();
   if (tab === 'report') renderReport();
   if (tab === 'polist') renderPoList();
+  if (tab === 'comps') renderAttachments();
   if (tab === 'settings') renderSettingsView();
 }
 
@@ -2515,6 +2597,174 @@ function render(){
     if (calc.maxBuildCostAuto) maxBuildCostInput.value = Math.round(calc.maxBuildCost);
   }
   saveAppState();
+}
+
+// ---------- Comps & Lots attachments ----------
+const ATTACHMENTS_BUCKET = 'project-attachments';
+const MAX_LOCAL_ATTACHMENT_BYTES = 2 * 1024 * 1024; // 2MB cap when Supabase Storage isn't available
+
+function fmtBytes(n){
+  if (!n && n !== 0) return '';
+  if (n < 1024) return n + ' B';
+  if (n < 1024*1024) return (n/1024).toFixed(0) + ' KB';
+  return (n/1024/1024).toFixed(1) + ' MB';
+}
+
+function updateAttStorageStatus(){
+  const el = document.getElementById('attStorageStatus');
+  if (!el) return;
+  if (sbClient){
+    el.textContent = 'Connected to Supabase Storage — uploads go to the cloud and are available on any device you sign into.';
+    el.style.color = 'var(--good)';
+  } else {
+    el.textContent = `No Supabase Storage connected — PDFs under ${fmtBytes(MAX_LOCAL_ATTACHMENT_BYTES)} will be stored locally in this browser only. Connect Supabase in Company Settings for larger files and cross-device access.`;
+    el.style.color = 'var(--gray)';
+  }
+}
+
+async function uploadAttachment(file){
+  const proj = current();
+  if (!proj || !file) return;
+
+  const category = document.getElementById('attCategory').value;
+  const name = document.getElementById('attName').value.trim() || file.name;
+  const notes = document.getElementById('attNotes').value.trim();
+  const record = { id: proj.nextAttachmentId++, name, category, notes, uploadedAt: Date.now(), sizeBytes: file.size, includeInBankPdf: true };
+
+  if (sbClient){
+    const safeName = file.name.replace(/[^a-z0-9.\-_]+/gi, '_');
+    const path = `${proj.id}/${record.id}-${safeName}`;
+    const { error } = await sbClient.storage.from(ATTACHMENTS_BUCKET).upload(path, file, { contentType: 'application/pdf' });
+    if (!error){
+      record.storagePath = path;
+      proj.attachments.push(record);
+      finishAttachmentUpload();
+      return;
+    }
+    console.warn('Supabase Storage upload failed, falling back to local storage:', error.message);
+  }
+
+  if (file.size > MAX_LOCAL_ATTACHMENT_BYTES){
+    alert(`This file is ${fmtBytes(file.size)}. Without Supabase Storage connected (or if the upload failed), local files are capped at ${fmtBytes(MAX_LOCAL_ATTACHMENT_BYTES)} to protect your other saved projects. Connect Supabase Storage in Company Settings for larger files, or upload a smaller PDF.`);
+    proj.nextAttachmentId--; // give the id back since nothing was actually saved
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    record.fileDataUrl = e.target.result;
+    proj.attachments.push(record);
+    finishAttachmentUpload();
+  };
+  reader.onerror = () => alert('Could not read that file.');
+  reader.readAsDataURL(file);
+}
+
+function finishAttachmentUpload(){
+  document.getElementById('attName').value = '';
+  document.getElementById('attNotes').value = '';
+  document.getElementById('attChosenFileName').textContent = '';
+  document.getElementById('attFileInput').value = '';
+  renderAttachments();
+  saveAppState();
+}
+
+async function viewAttachment(att){
+  if (att.storagePath && sbClient){
+    const { data, error } = await sbClient.storage.from(ATTACHMENTS_BUCKET).createSignedUrl(att.storagePath, 3600);
+    if (error){ alert('Could not open file: ' + error.message); return; }
+    window.open(data.signedUrl, '_blank');
+  } else if (att.fileDataUrl){
+    window.open(att.fileDataUrl, '_blank');
+  } else {
+    alert('This file is unavailable — it may have been uploaded to Supabase Storage on another device/session.');
+  }
+}
+
+async function deleteAttachment(id){
+  const proj = current();
+  const att = proj.attachments.find(a => a.id === id);
+  if (!att) return;
+  if (!confirm(`Remove "${att.name}"? This can't be undone.`)) return;
+  if (att.storagePath && sbClient){
+    await sbClient.storage.from(ATTACHMENTS_BUCKET).remove([att.storagePath]);
+  }
+  proj.attachments = proj.attachments.filter(a => a.id !== id);
+  renderAttachments();
+  saveAppState();
+}
+
+function renderAttachments(){
+  const proj = current();
+  if (!proj) return;
+  updateAttStorageStatus();
+
+  const renderGroup = (containerId, category, emptyText) => {
+    const container = document.getElementById(containerId);
+    const items = proj.attachments.filter(a => a.category === category);
+    if (!items.length){
+      container.innerHTML = `<div class="att-empty">${emptyText}</div>`;
+      return;
+    }
+    container.innerHTML = items.map(att => `
+      <div class="att-row">
+        <div class="att-icon">
+          <svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M3.5 1.5h6l3 3v10a1 1 0 0 1-1 1h-8a1 1 0 0 1-1-1v-12a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.3"/><path d="M9 1.5v3h3" stroke="currentColor" stroke-width="1.3"/></svg>
+        </div>
+        <div class="att-info">
+          <div class="att-name">${escapeAttr(att.name)}</div>
+          <div class="att-meta">${att.notes ? escapeAttr(att.notes) + ' — ' : ''}${fmtBytes(att.sizeBytes)} · ${new Date(att.uploadedAt).toLocaleDateString()}${att.storagePath ? ' · Cloud' : ' · Local'}</div>
+        </div>
+        <label class="att-include-toggle">
+          <input type="checkbox" ${att.includeInBankPdf ? 'checked' : ''} data-att-include="${att.id}">
+          Include in Bank PDF
+        </label>
+        <div class="att-actions">
+          <button class="btn btn-sm" data-att-view="${att.id}">View</button>
+          <button class="btn btn-sm btn-danger" data-att-delete="${att.id}">Remove</button>
+        </div>
+      </div>
+    `).join('');
+  };
+
+  renderGroup('compsListComp', 'comp', 'No comps attached yet.');
+  renderGroup('compsListLot', 'lot', 'No potential lots attached yet.');
+}
+
+function attachCompsEvents(){
+  document.getElementById('btnChooseAttFile').addEventListener('click', () => document.getElementById('attFileInput').click());
+  document.getElementById('attFileInput').addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.type !== 'application/pdf'){
+      alert('Please choose a PDF file.');
+      e.target.value = '';
+      return;
+    }
+    document.getElementById('attChosenFileName').textContent = `${file.name} (${fmtBytes(file.size)})`;
+    uploadAttachment(file);
+  });
+
+  const compsView = document.getElementById('compsView');
+  compsView.addEventListener('click', e => {
+    const viewBtn = e.target.closest('[data-att-view]');
+    if (viewBtn){
+      const proj = current();
+      const att = proj.attachments.find(a => a.id === Number(viewBtn.dataset.attView));
+      if (att) viewAttachment(att);
+      return;
+    }
+    const delBtn = e.target.closest('[data-att-delete]');
+    if (delBtn){ deleteAttachment(Number(delBtn.dataset.attDelete)); }
+  });
+  compsView.addEventListener('change', e => {
+    const includeBox = e.target.closest('[data-att-include]');
+    if (includeBox){
+      const proj = current();
+      const att = proj.attachments.find(a => a.id === Number(includeBox.dataset.attInclude));
+      if (att){ att.includeInBankPdf = includeBox.checked; saveAppStateDebounced(); }
+    }
+  });
 }
 
 // ---------- Bid List & Purchase Orders ----------
@@ -2954,7 +3204,7 @@ function buildPoPdf(row, proj){
 }
 
 // ---------- Bank / Lender Export ----------
-function buildBankPdf(proj){
+async function buildBankPdf(proj){
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
   const calc = computeAll(proj);
@@ -3347,7 +3597,53 @@ function buildBankPdf(proj){
   }
 
   const safeName = (p.name || 'mcd-estimate').replace(/[^a-z0-9\-_]+/gi,'_');
-  doc.save(`${safeName}_Bank_Cost_Margin_Package.pdf`);
+  const filename = `${safeName}_Bank_Cost_Margin_Package.pdf`;
+  const attachmentsToInclude = (proj.attachments || []).filter(a => a.includeInBankPdf);
+
+  if (!attachmentsToInclude.length || !window.PDFLib){
+    if (attachmentsToInclude.length && !window.PDFLib){
+      console.error('pdf-lib failed to load — exporting the cost analysis without attached comps/lots merged in.');
+    }
+    doc.save(filename);
+    return;
+  }
+
+  // Merge attached comp/lot PDFs onto the end of the cost analysis so the bank gets one combined file.
+  try {
+    const { PDFDocument } = window.PDFLib;
+    const mergedPdf = await PDFDocument.load(doc.output('arraybuffer'));
+
+    for (const att of attachmentsToInclude){
+      try {
+        let bytes;
+        if (att.storagePath && sbClient){
+          const { data, error } = await sbClient.storage.from(ATTACHMENTS_BUCKET).download(att.storagePath);
+          if (error) throw error;
+          bytes = await data.arrayBuffer();
+        } else if (att.fileDataUrl){
+          bytes = await (await fetch(att.fileDataUrl)).arrayBuffer();
+        } else {
+          continue; // file unavailable in this browser/session — skip rather than fail the whole export
+        }
+        const donorPdf = await PDFDocument.load(bytes);
+        const copiedPages = await mergedPdf.copyPages(donorPdf, donorPdf.getPageIndices());
+        copiedPages.forEach(pg => mergedPdf.addPage(pg));
+      } catch (e){
+        console.error(`Could not merge attachment "${att.name}":`, e);
+      }
+    }
+
+    const mergedBytes = await mergedPdf.save();
+    const blob = new Blob([mergedBytes], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  } catch (e){
+    console.error('Attachment merge failed, falling back to cost analysis only:', e);
+    doc.save(filename);
+  }
 }
 
 // ---------- Company Settings view ----------
@@ -3561,6 +3857,7 @@ function showAuthGate(){
   document.getElementById('appView').style.display = 'none';
   document.getElementById('reportView').style.display = 'none';
   document.getElementById('poView').style.display = 'none';
+  document.getElementById('compsView').style.display = 'none';
   document.getElementById('settingsView').style.display = 'none';
 }
 
@@ -3708,6 +4005,7 @@ document.addEventListener('DOMContentLoaded', () => {
   loadAppState();
   attachEvents();
   attachPoEvents();
+  attachCompsEvents();
   attachSettingsEvents();
   attachAuthEvents();
   applyCompanySettingsToUI();
