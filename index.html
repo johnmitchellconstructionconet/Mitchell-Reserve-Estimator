@@ -537,6 +537,14 @@ tr.subtotal-row td{
           <p>Each project keeps its own line items, rates, and scope notes — fully separate from the others.</p>
         </div>
       </div>
+
+      <div class="panel" style="margin-bottom:20px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;">
+          <div id="wholeSyncStatus" style="font-size:12.5px; color:var(--gray);"></div>
+          <button class="btn" id="btnSyncNow">Sync Now</button>
+        </div>
+      </div>
+
       <div class="section-label">Your Projects</div>
       <div class="dash-filter" id="dashFilter">
         <div class="dash-filter-tab active" data-status-filter="active">Active</div>
@@ -1360,6 +1368,7 @@ function saveAppState(){
       nextProjectId: app.nextProjectId
     }));
   } catch (e) { /* storage unavailable (private browsing, quota, etc) — edits just won't persist across reloads */ }
+  pushAllProjectsToRemoteDebounced();
 }
 
 // Fields that have been added to the project schema over time. When an older saved project is
@@ -1387,6 +1396,8 @@ function hydrateProject(proj){
   if (proj.financing === undefined){
     proj.financing = { loanAmount: '', interestRatePct: '', originationFeePct: '', constructionMonths: '', avgDrawPct: 50, holdMonths: '' };
   }
+  if (proj.remoteId === undefined) proj.remoteId = null;
+  if (proj.updatedAt === undefined) proj.updatedAt = proj.createdAt || Date.now();
   return proj;
 }
 
@@ -1400,6 +1411,104 @@ function loadAppState(){
       app.nextProjectId = parsed.nextProjectId || (Math.max(0, ...parsed.projects.map(p=>p.id||0)) + 1);
     }
   } catch (e) { /* corrupted or unreadable — start fresh rather than crash */ }
+}
+
+// ---------- Whole-program sync (Supabase) ----------
+// Mirrors every project's full JSON (line items, POs, stress tests, financing calculator, comps —
+// everything) up to a shared Supabase table, and pulls in whatever teammates have saved. This is
+// separate from, and in addition to, the per-browser localStorage save — localStorage remains the
+// safety net if Supabase is unreachable or not configured.
+const SHARED_PROJECTS_TABLE = 'shared_projects';
+let wholeSyncAvailable = false; // set true once a pull succeeds against a real shared_projects table
+let _remotePushTimer = null;
+
+function pushAllProjectsToRemoteDebounced(){
+  if (!sbClient) return;
+  clearTimeout(_remotePushTimer);
+  _remotePushTimer = setTimeout(() => {
+    app.projects.forEach(p => pushProjectToRemote(p));
+  }, 2500);
+}
+
+async function pushProjectToRemote(proj){
+  if (!sbClient) return;
+  proj.updatedAt = Date.now();
+  const payload = {
+    name: proj.project.name || 'Untitled Project',
+    data: proj,
+    updated_at: new Date(proj.updatedAt).toISOString(),
+    updated_by: currentAuthUser ? currentAuthUser.email : null
+  };
+  try {
+    if (proj.remoteId){
+      const { error } = await sbClient.from(SHARED_PROJECTS_TABLE).update(payload).eq('id', proj.remoteId);
+      if (error) throw error;
+    } else {
+      const { data, error } = await sbClient.from(SHARED_PROJECTS_TABLE).insert([payload]).select().single();
+      if (error) throw error;
+      if (data){ proj.remoteId = data.id; saveAppState(); } // remember the new remote id locally, without re-triggering another remote push
+    }
+    wholeSyncAvailable = true;
+  } catch (e) {
+    console.warn('Could not sync project to Supabase (staying local for now):', e.message);
+  }
+}
+
+// Pulls every project from the shared table and merges it into app.projects. Purely additive/
+// updating — this NEVER removes a local project just because it's missing remotely, so a failed or
+// partial sync can't make anything look "deleted." Most-recently-updated wins on conflicts.
+async function pullProjectsFromRemote(){
+  if (!sbClient) return false;
+  try {
+    const { data, error } = await sbClient.from(SHARED_PROJECTS_TABLE).select('*');
+    if (error) throw error;
+    wholeSyncAvailable = true;
+
+    (data || []).forEach(row => {
+      const remoteProj = row.data;
+      if (!remoteProj || !remoteProj.project) return; // skip anything malformed rather than let it break the merge
+      remoteProj.remoteId = row.id;
+      remoteProj.updatedAt = row.updated_at ? new Date(row.updated_at).getTime() : Date.now();
+
+      const localMatch = app.projects.find(p => p.remoteId === row.id);
+      if (localMatch){
+        if ((remoteProj.updatedAt || 0) > (localMatch.updatedAt || 0)){
+          hydrateProject(remoteProj);
+          remoteProj.id = localMatch.id; // keep using the same local numeric id so nothing currently open gets orphaned
+          const idx = app.projects.indexOf(localMatch);
+          app.projects[idx] = remoteProj;
+        }
+      } else {
+        hydrateProject(remoteProj);
+        remoteProj.id = app.nextProjectId++;
+        app.projects.push(remoteProj);
+      }
+    });
+
+    // Anything local that's never been synced (created offline, or before this feature existed) gets pushed up.
+    app.projects.filter(p => !p.remoteId).forEach(p => pushProjectToRemote(p));
+
+    saveAppState();
+    return true;
+  } catch (e) {
+    console.warn('Whole-program sync unavailable (using local storage only):', e.message);
+    return false;
+  }
+}
+
+function updateWholeSyncStatus(){
+  const el = document.getElementById('wholeSyncStatus');
+  if (!el) return;
+  if (!sbClient){
+    el.textContent = 'Not connected to Supabase — projects stay local to this browser only.';
+    el.style.color = 'var(--gray)';
+  } else if (wholeSyncAvailable){
+    el.textContent = 'Connected — every project syncs through Supabase for anyone signed in.';
+    el.style.color = 'var(--good)';
+  } else {
+    el.textContent = 'Supabase is connected, but the shared_projects table isn\'t set up yet — run the SQL below, then click "Sync Now."';
+    el.style.color = 'var(--attn-text)';
+  }
 }
 
 // ---------- Company Settings (persisted in this browser via localStorage — not per project) ----------
@@ -1519,6 +1628,8 @@ function newProjectShell(name, sqft){
   const poList = bidSeed.map(row => Object.assign({}, row, {vendors: row.vendors.slice(), linkedItemIds: [], scopeText: ''}));
   return {
     id: app.nextProjectId++,
+    remoteId: null,          // Supabase row id once this project has synced to shared_projects
+    updatedAt: Date.now(),   // used for last-write-wins conflict resolution when syncing
     createdAt: Date.now(),
     status: 'active', // 'active' | 'closed'
     project: { name: name||'', address:'', date:'', sqft: sqft || 2500, bed:0, bath:0, garage:0, targetSalePrice:'', contingencyPct:10, bestCaseSalePrice:'', worstCaseSalePrice:'', maxBuildCost:'', maxBuildCostAuto:true, lotCost:'', realtorFeePct:6, stressACostPct:10, stressAPricePct:-10, stressBCostPct:-10, stressBPricePct:10 },
@@ -1685,6 +1796,7 @@ let dashboardStatusFilter = 'active';
 
 function renderDashboard(){
   saveAppState();
+  updateWholeSyncStatus();
   const wrap = document.getElementById('projectGridWrap');
   const filterEl = document.getElementById('dashFilter');
 
@@ -1798,11 +1910,14 @@ function duplicateProject(id){
   if (!src) return;
   const copy = JSON.parse(JSON.stringify(src));
   copy.id = app.nextProjectId++;
+  copy.remoteId = null; // a duplicate is a distinct project — give it its own row when it syncs
   copy.createdAt = Date.now();
+  copy.updatedAt = Date.now();
   copy.status = 'active';
   copy.project.name = (src.project.name || 'Untitled Project') + ' (Copy)';
   app.projects.push(copy);
   renderDashboard();
+  saveAppState();
 }
 
 function deleteProject(id){
@@ -1810,11 +1925,17 @@ function deleteProject(id){
   if (!proj) return;
   if (!confirm(`Delete "${proj.project.name || 'Untitled Project'}"? This can't be undone — save it first if you want to keep it.`)) return;
   app.projects = app.projects.filter(p=>p.id!==id);
+  if (proj.remoteId && sbClient){
+    sbClient.from(SHARED_PROJECTS_TABLE).delete().eq('id', proj.remoteId).then(({error}) => {
+      if (error) console.warn('Could not delete shared copy of project:', error.message);
+    });
+  }
   if (app.activeId === id){
     app.activeId = null;
     switchTab('dashboard');
   }
   renderDashboard();
+  saveAppState();
 }
 
 function openNewProjectModal(){
@@ -2448,6 +2569,17 @@ function attachEvents(){
     renderDashboard();
   });
 
+  document.getElementById('btnSyncNow').addEventListener('click', async () => {
+    const btn = document.getElementById('btnSyncNow');
+    btn.disabled = true;
+    btn.textContent = 'Syncing...';
+    await pullProjectsFromRemote();
+    btn.disabled = false;
+    btn.textContent = 'Sync Now';
+    updateWholeSyncStatus();
+    renderDashboard();
+  });
+
   document.querySelectorAll('.sidebar-nav .nav-item[data-tab]').forEach(t => {
     t.addEventListener('click', () => switchTab(t.dataset.tab));
   });
@@ -2533,7 +2665,9 @@ function loadProjectFile(e){
       const loaded = JSON.parse(evt.target.result);
       if (!loaded.items || !loaded.project) throw new Error('bad format');
       loaded.id = app.nextProjectId++;
+      loaded.remoteId = null; // an imported file is a fresh copy — give it its own shared row when it syncs
       loaded.createdAt = Date.now();
+      loaded.updatedAt = Date.now();
       if (!loaded.scopeNotes) loaded.scopeNotes = {};
       if (!loaded.collapsed) loaded.collapsed = {};
       if (!loaded.nextId) loaded.nextId = Math.max(...loaded.items.map(i=>i.id), 1000) + 1;
@@ -2579,7 +2713,16 @@ function switchTab(tab){
   document.getElementById('btnSaveProject').disabled = !current();
   document.getElementById('btnPrint').disabled = !current();
 
-  if (tab === 'dashboard'){ document.getElementById('projectCrumb').classList.add('hidden'); renderDashboard(); }
+  if (tab === 'dashboard'){
+    document.getElementById('projectCrumb').classList.add('hidden');
+    renderDashboard();
+    if (sbClient){
+      // Refresh in the background so a teammate's new/updated project shows up without a full reload.
+      pullProjectsFromRemote().then(() => {
+        if (document.getElementById('dashboardView').style.display !== 'none') renderDashboard();
+      });
+    }
+  }
   if (tab === 'app') render();
   if (tab === 'report') renderReport();
   if (tab === 'polist') renderPoList();
@@ -4088,6 +4231,7 @@ function renderSettingsView(){
   document.getElementById('settingsSupabaseKey').value = COMPANY.supabaseAnonKey || '';
   updateSupabaseStatus();
   renderTeamMembers();
+  updateWholeSyncStatus();
 }
 
 function updateSupabaseStatus(){
@@ -4257,6 +4401,7 @@ function attachSettingsEvents(){
     initSupabaseClient();
     updateSupabaseStatus();
     renderTeamMembers();
+    updateWholeSyncStatus();
   });
 
   document.getElementById('btnAddTeamMember').addEventListener('click', addTeamMember);
@@ -4327,6 +4472,7 @@ async function attemptSignIn(){
   updateAuthUI();
   hideAuthGate();
   applyCompanySettingsToUI();
+  await pullProjectsFromRemote();
   switchTab('dashboard');
 }
 
@@ -4403,6 +4549,7 @@ async function checkAuthAndInit(){
       currentAuthUser = session.user;
       updateAuthUI();
       hideAuthGate();
+      await pullProjectsFromRemote();
       switchTab('dashboard');
     } else {
       showAuthGate();
