@@ -205,6 +205,10 @@ tr.po-not-ready{opacity:0.55;}
 
 /* ---------- Link items modal (larger variant) ---------- */
 .modal.modal-lg{width:640px; max-height:82vh; display:flex; flex-direction:column;}
+.modal.modal-lg h3{flex-shrink:0;}
+.modal.modal-lg > p{flex-shrink:0;}
+.modal.modal-lg .modal-actions{flex-shrink:0;}
+.modal-scroll-body{overflow-y:auto; flex:1; min-height:0; padding-right:4px; margin-right:-4px;}
 .link-items-scroll{overflow-y:auto; flex:1; border:1px solid var(--border); border-radius:8px; margin:10px 0;}
 .link-cat-group{border-bottom:1px solid var(--border);}
 .link-cat-head{padding:9px 14px; background:var(--bg); font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--gray);}
@@ -3069,6 +3073,7 @@ function openEditAttachmentModal(id){
         <h3>${att.category === 'lot' ? 'Potential Lot' : 'Comp'} Details</h3>
         <p style="font-size:11.5px; color:var(--gray); margin:-8px 0 14px;">${detailBits.join(' · ')}</p>
 
+        <div class="modal-scroll-body">
         <div class="field" style="margin-bottom:12px;">
           <label>Category</label>
           <select id="editAttCategory">
@@ -3128,6 +3133,7 @@ function openEditAttachmentModal(id){
               <button class="btn btn-sm" id="btnAddSupportingDocLink" type="button">Add Link</button>
             </div>
           </div>
+        </div>
         </div>
 
         <div class="modal-actions">
