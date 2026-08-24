@@ -40,18 +40,41 @@ h1,h2,h3,h4{font-family:var(--app-font); font-weight:700; letter-spacing:-0.01em
 .eyebrow{font-size:10.5px; text-transform:uppercase; letter-spacing:0.08em; color:var(--gray); font-weight:600;}
 
 /* ---------- App shell ---------- */
-.app-header{
-  background:var(--white);
-  color:var(--ink);
-  padding:18px 28px;
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  flex-wrap:wrap;
-  gap:12px;
-  position:sticky; top:0; z-index:50;
-  border-bottom:1px solid var(--border);
+/* ---------- App shell: sidebar + content ---------- */
+.app-shell{display:flex; min-height:100vh;}
+.sidebar{
+  width:264px; flex-shrink:0; background:var(--white); border-right:1px solid var(--border);
+  display:flex; flex-direction:column; padding:22px 16px 16px; position:sticky; top:0; height:100vh; overflow-y:auto;
 }
+.sidebar-brand{display:flex; align-items:center; gap:10px; cursor:pointer; padding:0 4px; margin-bottom:2px;}
+.sidebar-brand-name{font-size:15px; font-weight:700; letter-spacing:-0.01em; color:var(--ink); line-height:1.25;}
+.sidebar-program-tag{font-size:10px; color:var(--gray); letter-spacing:0.1em; text-transform:uppercase; font-weight:700; padding:0 4px; margin-bottom:22px;}
+.sidebar-section-label{font-size:10px; text-transform:uppercase; letter-spacing:0.08em; color:var(--gray-light); font-weight:700; padding:0 8px; margin:18px 0 6px;}
+.sidebar-nav{display:flex; flex-direction:column; gap:1px;}
+.nav-item{
+  display:flex; align-items:center; gap:10px; padding:9px 10px; border-radius:8px;
+  font-size:13px; font-weight:600; color:var(--gray); cursor:pointer; transition:background .12s;
+}
+.nav-item:hover{background:var(--active-bg); color:var(--ink);}
+.nav-item.active{background:var(--active-bg); color:var(--ink); position:relative;}
+.nav-item.active::after{content:''; width:5px; height:5px; border-radius:50%; background:var(--ink); margin-left:auto;}
+.nav-item svg{flex-shrink:0; opacity:0.85;}
+.nav-item.disabled{opacity:0.35; cursor:not-allowed; pointer-events:none;}
+.sidebar-crumb{font-size:11px; color:var(--gray-light); padding:4px 10px 8px; line-height:1.3;}
+.sidebar-crumb b{color:var(--ink); font-weight:700; display:block; font-size:12.5px; margin-top:1px;}
+.sidebar-spacer{flex:1;}
+.sidebar-footer{display:flex; flex-direction:column; gap:8px; padding-top:14px; border-top:1px solid var(--border); margin-top:14px;}
+.sidebar-footer .btn{width:100%; justify-content:center; display:flex;}
+.sidebar-user-row{display:flex; align-items:center; justify-content:space-between; gap:8px; padding:2px 4px;}
+.sidebar-user-row span{font-size:11px; color:var(--gray); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+
+.content-area{flex:1; min-width:0; display:flex; flex-direction:column;}
+.content-topbar{
+  display:flex; align-items:center; justify-content:flex-end; gap:8px;
+  padding:14px 28px; background:var(--white); border-bottom:1px solid var(--border);
+  position:sticky; top:0; z-index:40;
+}
+
 .brand{display:flex; align-items:center; gap:14px; cursor:pointer;}
 .brand .name{font-size:16px; font-weight:700; letter-spacing:-0.01em; color:var(--ink);}
 .brand .tag{font-size:10.5px; color:var(--gray); letter-spacing:0.08em; text-transform:uppercase; font-weight:600;}
@@ -76,6 +99,18 @@ h1,h2,h3,h4{font-family:var(--app-font); font-weight:700; letter-spacing:-0.01em
 .btn:disabled{opacity:0.4; cursor:not-allowed;}
 .btn-sm{padding:6px 11px; font-size:11.5px;}
 
+.main{padding:28px 32px 60px; max-width:1500px; margin:0 auto; width:100%;}
+
+/* ---------- Dashboard "Company overview" style ---------- */
+.dash-eyebrow{font-size:10.5px; text-transform:uppercase; letter-spacing:0.1em; color:var(--gray); font-weight:700; margin-bottom:8px;}
+.dash-head h1{font-size:32px; font-weight:800; letter-spacing:-0.02em;}
+.dash-head p{color:var(--gray); font-size:14px; margin-top:6px; max-width:560px;}
+.stat-card-row{display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:14px; margin:26px 0;}
+.stat-card-lg{background:var(--white); border:1px solid var(--border); border-radius:14px; padding:20px 22px; box-shadow:var(--shadow);}
+.stat-card-lg .stat-label{font-size:10px; text-transform:uppercase; letter-spacing:0.08em; color:var(--gray); font-weight:700; margin-bottom:8px;}
+.stat-card-lg .stat-value{font-size:34px; font-weight:800; letter-spacing:-0.02em; color:var(--ink); line-height:1;}
+.section-label{font-size:11px; text-transform:uppercase; letter-spacing:0.08em; color:var(--gray); font-weight:700; margin:28px 0 12px;}
+
 .tabs{display:flex; gap:3px; padding:14px 28px; background:var(--white); border-bottom:1px solid var(--border);}
 .tab{
   padding:9px 16px; font-size:13px; font-weight:600; color:var(--gray); cursor:pointer;
@@ -86,12 +121,8 @@ h1,h2,h3,h4{font-family:var(--app-font); font-weight:700; letter-spacing:-0.01em
 .tab.disabled{opacity:0.4; cursor:not-allowed;}
 .tab.disabled:hover{color:var(--gray);}
 
-.main{padding:24px 28px 60px; max-width:1500px; margin:0 auto;}
-
 /* ---------- Dashboard ---------- */
 .dash-head{display:flex; align-items:flex-end; justify-content:space-between; margin-bottom:20px; flex-wrap:wrap; gap:12px;}
-.dash-head h1{font-size:26px;}
-.dash-head p{color:var(--gray); font-size:13.5px; margin-top:4px;}
 .project-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:16px;}
 .dash-filter{display:flex; gap:6px; margin-bottom:18px;}
 .dash-filter-tab{padding:7px 16px; font-size:12.5px; font-weight:600; border-radius:20px; color:var(--gray); cursor:pointer; border:1px solid var(--border); background:var(--white); transition:background 0.12s;}
@@ -323,7 +354,7 @@ tr.subtotal-row td{
 
 @media print{
   body{background:white;}
-  .app-header, .tabs, .report-controls, .no-print{display:none !important;}
+  .sidebar, .content-topbar, .tabs, .report-controls, .no-print{display:none !important;}
   #reportView{display:block !important; box-shadow:none; border:none; padding:0; max-width:100%;}
   .main, #appView, #dashboardView, #poView, #settingsView{display:none !important;}
   .report-category{page-break-inside:avoid;}
@@ -331,6 +362,19 @@ tr.subtotal-row td{
 
 .hidden{display:none !important;}
 .file-input{display:none;}
+
+/* ---------- Auth gate ---------- */
+#authGateView{position:fixed; inset:0; z-index:500; background:var(--bg); display:flex; align-items:center; justify-content:center; padding:24px;}
+.auth-card{width:100%; max-width:360px; background:var(--white); border:1px solid var(--border); border-radius:var(--radius); box-shadow:0 4px 24px rgba(26,26,26,0.08); padding:32px 28px; text-align:center;}
+.auth-logo-wrap{display:flex; justify-content:center; margin-bottom:10px;}
+.auth-logo-wrap img{max-height:48px; max-width:200px; object-fit:contain;}
+.auth-name{font-size:19px; font-weight:700; color:var(--ink);}
+.auth-tag{font-size:12px; color:var(--gray); margin-top:2px; margin-bottom:22px;}
+.auth-card .field{text-align:left; margin-bottom:14px;}
+.auth-error{background:var(--attn-bg); color:var(--attn-text); font-size:12.5px; padding:9px 12px; border-radius:8px; margin-bottom:16px; text-align:left;}
+.auth-link{background:none; border:none; color:var(--gray); font-size:12px; text-decoration:underline; cursor:pointer; margin-top:12px; padding:4px;}
+.auth-link:hover{color:var(--ink);}
+.auth-footnote{font-size:11px; color:var(--gray-light); margin-top:18px; line-height:1.4;}
 
 /* ---------- Company Settings ---------- */
 .settings-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:16px 20px;}
@@ -361,46 +405,92 @@ tr.subtotal-row td{
 </head>
 <body>
 
-<div class="app-header">
-  <div style="display:flex; align-items:center;">
-    <div class="brand" id="brandHome">
+<div id="authGateView" class="hidden">
+  <div class="auth-card">
+    <div id="authGateLogoWrap" class="auth-logo-wrap"></div>
+    <div class="auth-name" id="authGateName">Mitchell Construction &amp; Design</div>
+    <div class="auth-tag" id="authGateTag">Estimating &amp; VE System</div>
+    <div class="auth-error hidden" id="authError"></div>
+    <div class="field"><label>Email</label><input id="authEmail" type="email" autocomplete="username" placeholder="you@company.com"></div>
+    <div class="field"><label>Password</label><input id="authPassword" type="password" autocomplete="current-password" placeholder="••••••••"></div>
+    <button class="btn btn-gold" id="btnAuthSignIn" style="width:100%; margin-top:6px;">Sign In</button>
+    <button class="auth-link" id="btnAuthForgotPw">Forgot password?</button>
+    <p class="auth-footnote">Accounts are created by your admin in Supabase — there's no public sign-up here.</p>
+  </div>
+</div>
+
+<div class="app-shell">
+  <div class="sidebar">
+    <div class="sidebar-brand" id="brandHome">
       <div id="brandLogoWrap"></div>
-      <div>
-        <div class="name" id="brandNameText">Mitchell Construction &amp; Design</div>
-        <div class="tag" id="brandTagText">Estimating &amp; VE System</div>
+      <div class="sidebar-brand-name" id="brandNameText">Mitchell Construction &amp; Design</div>
+    </div>
+    <div class="sidebar-program-tag" id="brandTagText">Estimating &amp; VE System</div>
+
+    <div class="sidebar-section-label">Workspace</div>
+    <nav class="sidebar-nav">
+      <div class="nav-item" data-tab="dashboard" id="navDashboard">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="6" height="6" rx="1.2" stroke="currentColor" stroke-width="1.3"/><rect x="9" y="1" width="6" height="6" rx="1.2" stroke="currentColor" stroke-width="1.3"/><rect x="1" y="9" width="6" height="6" rx="1.2" stroke="currentColor" stroke-width="1.3"/><rect x="9" y="9" width="6" height="6" rx="1.2" stroke="currentColor" stroke-width="1.3"/></svg>
+        Dashboard
+      </div>
+      <div class="sidebar-crumb hidden" id="projectCrumb"></div>
+      <div class="nav-item" data-tab="app" id="navBuilder">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><rect x="1.5" y="1.5" width="13" height="13" rx="1.5" stroke="currentColor" stroke-width="1.3"/><path d="M4 5h8M4 8h8M4 11h5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+        Estimate Builder
+      </div>
+      <div class="nav-item" data-tab="report" id="navReport">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M3.5 1.5h6l3 3v10a1 1 0 0 1-1 1h-8a1 1 0 0 1-1-1v-12a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.3"/><path d="M9 1.5v3h3" stroke="currentColor" stroke-width="1.3"/></svg>
+        Cost Analysis Report
+      </div>
+      <div class="nav-item" data-tab="polist" id="navPoList">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><rect x="3" y="2" width="10" height="12.5" rx="1.2" stroke="currentColor" stroke-width="1.3"/><path d="M6 1.2h4v1.6H6z" stroke="currentColor" stroke-width="1.2"/><path d="M5.5 7l1.3 1.3L9.5 5.6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M5.5 11h5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+        Bid List &amp; POs
+      </div>
+    </nav>
+
+    <div class="sidebar-section-label">Organization</div>
+    <nav class="sidebar-nav">
+      <div class="nav-item" data-tab="settings" id="navSettings">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="2.3" stroke="currentColor" stroke-width="1.3"/><path d="M8 1.8v1.6M8 12.6v1.6M14.2 8h-1.6M3.4 8H1.8M12.2 3.8l-1.1 1.1M4.9 11.1l-1.1 1.1M12.2 12.2l-1.1-1.1M4.9 4.9 3.8 3.8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+        Company Settings
+      </div>
+    </nav>
+
+    <div class="sidebar-spacer"></div>
+
+    <div class="sidebar-footer">
+      <button class="btn btn-ghost" id="btnLoadProject">Open Project File</button>
+      <input type="file" id="fileInput" class="file-input" accept="application/json">
+      <button class="btn btn-ghost" id="btnSaveProject" disabled>Save Project</button>
+      <div class="sidebar-user-row">
+        <span class="hidden" id="authUserBadge"></span>
+        <button class="btn btn-ghost hidden" id="btnSignOut" style="width:auto;">Sign Out</button>
       </div>
     </div>
-    <div class="brand-crumb hidden" id="projectCrumb"></div>
   </div>
-  <div class="toolbar">
-    <button class="btn btn-ghost" id="btnAllProjects">All Projects</button>
-    <button class="btn btn-ghost" id="btnCompanySettings">Company Settings</button>
-    <button class="btn btn-ghost" id="btnLoadProject">Open Project File</button>
-    <input type="file" id="fileInput" class="file-input" accept="application/json">
-    <button class="btn btn-ghost" id="btnSaveProject" disabled>Save Project</button>
-    <button class="btn btn-gold" id="btnPrint" disabled>Print / Export Report</button>
-  </div>
-</div>
 
-<div class="tabs" id="projectTabs" style="display:none;">
-  <div class="tab" data-tab="app">Estimate Builder</div>
-  <div class="tab" data-tab="report">Cost Analysis Report</div>
-  <div class="tab" data-tab="polist">Bid List &amp; POs</div>
-</div>
-
-<div id="dashboardView" class="main">
-  <div class="dash-head">
-    <div>
-      <h1>Your Projects</h1>
-      <p>Each project keeps its own line items, rates, and scope notes — fully separate from the others.</p>
+  <div class="content-area">
+    <div class="content-topbar">
+      <button class="btn btn-gold" id="btnPrint" disabled>Print / Export Report</button>
     </div>
-  </div>
-  <div class="dash-filter" id="dashFilter">
-    <div class="dash-filter-tab active" data-status-filter="active">Active</div>
-    <div class="dash-filter-tab" data-status-filter="closed">Closed</div>
-  </div>
-  <div id="projectGridWrap"></div>
-</div>
+
+    <div id="dashboardView" class="main">
+      <div class="dash-eyebrow">Dashboard</div>
+      <div class="dash-head">
+        <div>
+          <h1>Your Projects</h1>
+          <p>Each project keeps its own line items, rates, and scope notes — fully separate from the others.</p>
+        </div>
+      </div>
+      <div id="dashStatsRow"></div>
+      <div class="section-label">Your Projects</div>
+      <div class="dash-filter" id="dashFilter">
+        <div class="dash-filter-tab active" data-status-filter="active">Active</div>
+        <div class="dash-filter-tab" data-status-filter="closed">Closed</div>
+      </div>
+      <div id="projectGridWrap"></div>
+    </div>
+
 
 <div id="appView" class="main" style="display:none;">
 
@@ -574,8 +664,68 @@ tr.subtotal-row td{
     </div>
   </div>
 
+  <div class="panel settings-section">
+    <h3>Sign-In &amp; Team (Supabase)</h3>
+    <p style="color:var(--gray); font-size:12px; margin-top:-8px; margin-bottom:14px;">
+      Connects the app to your Supabase project for login and a shared team directory. The Anon Key is meant to be used in client-side apps like this one — it's safe to have here as long as Row Level Security is enabled on your tables (see the setup SQL below).
+    </p>
+    <div class="settings-grid">
+      <div class="field"><label>Supabase URL</label><input id="settingsSupabaseUrl" type="text" placeholder="https://your-project.supabase.co"></div>
+      <div class="field"><label>Supabase Anon Key</label><input id="settingsSupabaseKey" type="text" placeholder="eyJ..."></div>
+    </div>
+    <div style="margin-top:12px; display:flex; align-items:center; gap:12px;">
+      <button class="btn btn-gold" id="btnSaveSupabaseConfig">Save &amp; Reconnect</button>
+      <span id="supabaseStatus" style="font-size:12px; color:var(--gray);"></span>
+    </div>
+
+    <div style="margin-top:24px;">
+      <h3 style="margin-bottom:8px;">Team Members</h3>
+      <p style="color:var(--gray); font-size:12px; margin-bottom:12px;">
+        A shared directory of who's on the team — for reference only. Adding someone here does <b>not</b> create their login;
+        create their actual account in your Supabase project under Authentication &rarr; Users (or send an invite from there),
+        using the same email you add below.
+      </p>
+      <div id="teamMembersStatus" style="font-size:12.5px; color:var(--gray); margin-bottom:10px;"></div>
+      <table class="items" id="teamMembersTable" style="display:none;">
+        <thead><tr><th>Name</th><th>Email</th><th>Role</th><th style="width:30px;"></th></tr></thead>
+        <tbody id="teamMembersBody"></tbody>
+      </table>
+      <div class="grid-info" style="margin-top:14px;">
+        <div class="field"><label>Name</label><input id="tmName" type="text" placeholder="Kennedy Adamson"></div>
+        <div class="field"><label>Email</label><input id="tmEmail" type="email" placeholder="kennedy@company.com"></div>
+        <div class="field"><label>Role</label><input id="tmRole" type="text" placeholder="Designer / Selections"></div>
+      </div>
+      <button class="btn" id="btnAddTeamMember" style="margin-top:12px;">+ Add Team Member</button>
+
+      <details style="margin-top:18px;">
+        <summary style="cursor:pointer; font-size:12px; color:var(--gray); font-weight:600;">One-time setup SQL (run once in your Supabase SQL editor)</summary>
+        <pre id="teamSetupSql" style="background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:14px; font-size:11px; overflow-x:auto; margin-top:10px; white-space:pre-wrap;">create table if not exists team_members (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  email text not null,
+  role text,
+  created_at timestamptz default now()
+);
+
+alter table team_members enable row level security;
+
+create policy "Authenticated users can view team_members"
+  on team_members for select
+  using (auth.role() = 'authenticated');
+
+create policy "Authenticated users can manage team_members"
+  on team_members for all
+  using (auth.role() = 'authenticated')
+  with check (auth.role() = 'authenticated');</pre>
+      </details>
+    </div>
+  </div>
+
   <div style="display:flex; gap:10px;">
     <button class="btn btn-danger" id="btnResetCompanySettings">Reset to Defaults</button>
+  </div>
+</div>
+
   </div>
 </div>
 
@@ -968,6 +1118,8 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var n,r,i,a,
 
 </script>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" onerror="console.error('Failed to load supabase-js from CDN — check network/ad-blocker/CSP.')"></script>
+
 <script>
 // ============================================================
 // MC&D Estimating & VE System — core application logic
@@ -1002,7 +1154,9 @@ const DEFAULT_COMPANY_SETTINGS = {
   logoDataUrl: '',
   accentColor: '#A8874F',
   inkColor: '#1A1A1A',
-  fontFamily: 'Inter'
+  fontFamily: 'Inter',
+  supabaseUrl: 'https://fhikzuopiplgpxjugwkj.supabase.co',
+  supabaseAnonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZoaWt6dW9waXBsZ3B4anVnd2tqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc0OTQwMDIsImV4cCI6MjEwMzA3MDAwMn0.mqXKsDLytbiNmgpTbKXC97Vi_zPHAR-M59Cw2eWhlWA'
 };
 const FONT_STACKS = {
   'Inter': "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
@@ -1035,6 +1189,30 @@ function saveCompanySettings(){
 
 let COMPANY = loadCompanySettings();
 
+// ---------- Supabase client (authentication + Team Members directory) ----------
+// Uses the anon/public key by design — that key is meant to be used in client-side code and is
+// safe to expose as long as Row Level Security policies are set up on every table (see the SQL
+// snippet in Company Settings > Sign-In & Team). Never put a service_role key in this file.
+let sbClient = null;
+let currentAuthUser = null;
+
+function initSupabaseClient(){
+  if (!COMPANY.supabaseUrl || !COMPANY.supabaseAnonKey || !window.supabase){
+    sbClient = null;
+    return null;
+  }
+  try {
+    sbClient = window.supabase.createClient(COMPANY.supabaseUrl, COMPANY.supabaseAnonKey);
+  } catch (e) {
+    sbClient = null;
+  }
+  return sbClient;
+}
+
+function isSupabaseConfigured(){
+  return !!(COMPANY.supabaseUrl && COMPANY.supabaseAnonKey);
+}
+
 // Simple hex-to-rgb used by the PDF generators (jsPDF wants separate r,g,b numbers, not a hex string).
 function hexToRgb(hex){
   const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex || '');
@@ -1058,6 +1236,16 @@ function applyCompanySettingsToUI(){
   if (logoWrap){
     logoWrap.innerHTML = COMPANY.logoDataUrl ? `<img src="${COMPANY.logoDataUrl}" class="brand-logo-img" alt="logo">` : '';
   }
+
+  const authNameEl = document.getElementById('authGateName');
+  if (authNameEl) authNameEl.textContent = COMPANY.name;
+  const authTagEl = document.getElementById('authGateTag');
+  if (authTagEl) authTagEl.textContent = COMPANY.programName;
+  const authLogoWrap = document.getElementById('authGateLogoWrap');
+  if (authLogoWrap){
+    authLogoWrap.innerHTML = COMPANY.logoDataUrl ? `<img src="${COMPANY.logoDataUrl}" alt="logo">` : '';
+  }
+
   renderPrintFooter();
 }
 
@@ -1191,9 +1379,46 @@ function computeAll(proj){
 // ---------- Dashboard rendering ----------
 let dashboardStatusFilter = 'active';
 
+function renderDashStats(){
+  const statsEl = document.getElementById('dashStatsRow');
+  if (!statsEl) return;
+  const activeProjects = app.projects.filter(p => (p.status||'active')==='active');
+  const closedProjects = app.projects.filter(p => (p.status||'active')==='closed');
+  const totalPipelineCost = activeProjects.reduce((sum, p) => sum + computeAll(p).grandBuilder, 0);
+  const totalNeedsInput = activeProjects.reduce((sum, p) => sum + p.items.filter(i=>i.needsInput).length, 0);
+
+  if (!app.projects.length){
+    statsEl.innerHTML = '';
+    return;
+  }
+
+  statsEl.innerHTML = `
+    <div class="stat-card-row">
+      <div class="stat-card-lg">
+        <div class="stat-label">Active Projects</div>
+        <div class="stat-value">${activeProjects.length}</div>
+      </div>
+      <div class="stat-card-lg">
+        <div class="stat-label">Closed Projects</div>
+        <div class="stat-value">${closedProjects.length}</div>
+      </div>
+      <div class="stat-card-lg">
+        <div class="stat-label">Active Pipeline Cost</div>
+        <div class="stat-value" style="font-size:26px;">${fmtMoney(totalPipelineCost)}</div>
+      </div>
+      <div class="stat-card-lg">
+        <div class="stat-label">Lines Needing Input</div>
+        <div class="stat-value" style="color:${totalNeedsInput>0?'var(--attn-text)':'var(--good)'}">${totalNeedsInput}</div>
+      </div>
+    </div>
+  `;
+}
+
 function renderDashboard(){
   const wrap = document.getElementById('projectGridWrap');
   const filterEl = document.getElementById('dashFilter');
+
+  renderDashStats();
 
   const visibleProjects = app.projects.filter(p => (p.status || 'active') === dashboardStatusFilter);
 
@@ -1781,9 +2006,7 @@ function attachEvents(){
   document.getElementById('btnSaveProject').addEventListener('click', saveProject);
   document.getElementById('btnLoadProject').addEventListener('click', () => document.getElementById('fileInput').click());
   document.getElementById('fileInput').addEventListener('change', loadProjectFile);
-  document.getElementById('btnAllProjects').addEventListener('click', () => switchTab('dashboard'));
   document.getElementById('brandHome').addEventListener('click', () => switchTab('dashboard'));
-  document.getElementById('btnCompanySettings').addEventListener('click', () => switchTab('settings'));
 
   document.getElementById('dashFilter').addEventListener('click', (e) => {
     const tab = e.target.closest('[data-status-filter]');
@@ -1792,7 +2015,7 @@ function attachEvents(){
     renderDashboard();
   });
 
-  document.querySelectorAll('#projectTabs .tab').forEach(t => {
+  document.querySelectorAll('.sidebar-nav .nav-item[data-tab]').forEach(t => {
     t.addEventListener('click', () => switchTab(t.dataset.tab));
   });
 }
@@ -1843,7 +2066,7 @@ function refreshCrumb(){
   const proj = current();
   if (proj){
     crumb.classList.remove('hidden');
-    crumb.innerHTML = `<b>${escapeAttr(proj.project.name || 'Untitled Project')}</b>`;
+    crumb.innerHTML = `Active Project<b>${escapeAttr(proj.project.name || 'Untitled Project')}</b>`;
   } else {
     crumb.classList.add('hidden');
   }
@@ -1901,13 +2124,14 @@ function switchTab(tab){
     tab = 'dashboard';
   }
 
-  const projectTabs = document.getElementById('projectTabs');
-  if (tab === 'dashboard' || tab === 'settings'){
-    projectTabs.style.display = 'none';
-  } else {
-    projectTabs.style.display = 'flex';
-    projectTabs.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab===tab));
-  }
+  document.querySelectorAll('.sidebar-nav .nav-item[data-tab]').forEach(t => {
+    t.classList.toggle('active', t.dataset.tab === tab);
+  });
+
+  const hasProject = !!current();
+  ['navBuilder','navReport','navPoList'].forEach(id => {
+    document.getElementById(id).classList.toggle('disabled', !hasProject);
+  });
 
   document.getElementById('dashboardView').style.display = tab==='dashboard' ? 'block' : 'none';
   document.getElementById('appView').style.display = tab==='app' ? 'block' : 'none';
@@ -2743,6 +2967,107 @@ function renderSettingsView(){
   document.getElementById('settingsInkColor').value = COMPANY.inkColor;
   document.getElementById('settingsInkColorLabel').textContent = COMPANY.inkColor.toUpperCase();
   document.getElementById('settingsFontFamily').value = COMPANY.fontFamily;
+  document.getElementById('settingsSupabaseUrl').value = COMPANY.supabaseUrl || '';
+  document.getElementById('settingsSupabaseKey').value = COMPANY.supabaseAnonKey || '';
+  updateSupabaseStatus();
+  renderTeamMembers();
+}
+
+function updateSupabaseStatus(){
+  const el = document.getElementById('supabaseStatus');
+  if (!el) return;
+  if (!isSupabaseConfigured()){
+    el.textContent = 'Not connected — add your Supabase URL and Anon Key above.';
+    el.style.color = 'var(--gray)';
+  } else if (sbClient){
+    el.textContent = currentAuthUser ? `Connected — signed in as ${currentAuthUser.email}` : 'Connected';
+    el.style.color = 'var(--good)';
+  } else {
+    el.textContent = 'Configured, but the client failed to initialize — double check the URL and key.';
+    el.style.color = 'var(--attn-text)';
+  }
+}
+
+// ---------- Team Members (Supabase-backed directory, informational only — not real auth accounts) ----------
+async function renderTeamMembers(){
+  const statusEl = document.getElementById('teamMembersStatus');
+  const table = document.getElementById('teamMembersTable');
+  const body = document.getElementById('teamMembersBody');
+  if (!statusEl) return;
+
+  if (!isSupabaseConfigured()){
+    statusEl.textContent = 'Connect Supabase above to enable a shared team directory.';
+    table.style.display = 'none';
+    return;
+  }
+  if (!sbClient) initSupabaseClient();
+  if (!sbClient){
+    statusEl.textContent = 'Could not connect to Supabase — check your URL and Anon Key.';
+    table.style.display = 'none';
+    return;
+  }
+
+  statusEl.textContent = 'Loading team members...';
+  const { data, error } = await sbClient.from('team_members').select('*').order('created_at', { ascending: true });
+
+  if (error){
+    table.style.display = 'none';
+    if (error.code === '42P01' || (error.message || '').toLowerCase().includes('does not exist')){
+      statusEl.innerHTML = 'The <b>team_members</b> table doesn\'t exist yet in your Supabase project — run the setup SQL below (once), then refresh this page.';
+    } else {
+      statusEl.textContent = 'Could not load team members: ' + (error.message || 'unknown error');
+    }
+    return;
+  }
+
+  if (!data || !data.length){
+    statusEl.textContent = 'No team members added yet.';
+    table.style.display = 'none';
+    return;
+  }
+
+  statusEl.textContent = '';
+  table.style.display = '';
+  body.innerHTML = data.map(m => `
+    <tr data-team-member-row="${m.id}">
+      <td>${escapeAttr(m.name || '')}</td>
+      <td>${escapeAttr(m.email || '')}</td>
+      <td>${escapeAttr(m.role || '')}</td>
+      <td><button class="del-btn" data-team-member-delete="${m.id}" title="Remove">&times;</button></td>
+    </tr>
+  `).join('');
+}
+
+async function addTeamMember(){
+  const name = document.getElementById('tmName').value.trim();
+  const email = document.getElementById('tmEmail').value.trim();
+  const role = document.getElementById('tmRole').value.trim();
+  if (!name || !email){
+    alert('Enter at least a name and email.');
+    return;
+  }
+  if (!sbClient){ alert('Supabase isn\'t connected yet.'); return; }
+
+  const { error } = await sbClient.from('team_members').insert([{ name, email, role }]);
+  if (error){
+    alert('Could not add team member: ' + (error.message || 'unknown error'));
+    return;
+  }
+  document.getElementById('tmName').value = '';
+  document.getElementById('tmEmail').value = '';
+  document.getElementById('tmRole').value = '';
+  renderTeamMembers();
+}
+
+async function deleteTeamMember(id){
+  if (!sbClient) return;
+  if (!confirm('Remove this team member from the directory?')) return;
+  const { error } = await sbClient.from('team_members').delete().eq('id', id);
+  if (error){
+    alert('Could not remove team member: ' + (error.message || 'unknown error'));
+    return;
+  }
+  renderTeamMembers();
 }
 
 function attachSettingsEvents(){
@@ -2801,6 +3126,171 @@ function attachSettingsEvents(){
     applyCompanySettingsToUI();
     renderSettingsView();
   });
+
+  document.getElementById('btnSaveSupabaseConfig').addEventListener('click', () => {
+    COMPANY.supabaseUrl = document.getElementById('settingsSupabaseUrl').value.trim();
+    COMPANY.supabaseAnonKey = document.getElementById('settingsSupabaseKey').value.trim();
+    saveCompanySettings();
+    initSupabaseClient();
+    updateSupabaseStatus();
+    renderTeamMembers();
+  });
+
+  document.getElementById('btnAddTeamMember').addEventListener('click', addTeamMember);
+  document.getElementById('teamMembersBody').addEventListener('click', e => {
+    const delBtn = e.target.closest('[data-team-member-delete]');
+    if (delBtn) deleteTeamMember(delBtn.dataset.teamMemberDelete);
+  });
+}
+
+// ---------- Authentication (Supabase) ----------
+function showAuthGate(){
+  document.getElementById('authGateView').classList.remove('hidden');
+  document.querySelector('.app-shell').style.visibility = 'hidden';
+  document.getElementById('dashboardView').style.display = 'none';
+  document.getElementById('appView').style.display = 'none';
+  document.getElementById('reportView').style.display = 'none';
+  document.getElementById('poView').style.display = 'none';
+  document.getElementById('settingsView').style.display = 'none';
+}
+
+function hideAuthGate(){
+  document.getElementById('authGateView').classList.add('hidden');
+  document.querySelector('.app-shell').style.visibility = 'visible';
+}
+
+function updateAuthUI(){
+  const badge = document.getElementById('authUserBadge');
+  const signOutBtn = document.getElementById('btnSignOut');
+  if (currentAuthUser){
+    badge.textContent = currentAuthUser.email || '';
+    badge.classList.remove('hidden');
+    signOutBtn.classList.remove('hidden');
+  } else {
+    badge.classList.add('hidden');
+    signOutBtn.classList.add('hidden');
+  }
+}
+
+async function attemptSignIn(){
+  const email = document.getElementById('authEmail').value.trim();
+  const password = document.getElementById('authPassword').value;
+  const errEl = document.getElementById('authError');
+  errEl.classList.add('hidden');
+  if (!email || !password){
+    errEl.textContent = 'Enter both an email and a password.';
+    errEl.classList.remove('hidden');
+    return;
+  }
+  if (!sbClient){
+    errEl.textContent = 'Sign-in isn\'t configured yet — set your Supabase URL and Anon Key in Company Settings.';
+    errEl.classList.remove('hidden');
+    return;
+  }
+  const signInBtn = document.getElementById('btnAuthSignIn');
+  signInBtn.disabled = true;
+  signInBtn.textContent = 'Signing in...';
+  const { data, error } = await sbClient.auth.signInWithPassword({ email, password });
+  signInBtn.disabled = false;
+  signInBtn.textContent = 'Sign In';
+  if (error){
+    errEl.textContent = error.message || 'Sign-in failed — check your email and password.';
+    errEl.classList.remove('hidden');
+    return;
+  }
+  currentAuthUser = data.user;
+  updateAuthUI();
+  hideAuthGate();
+  applyCompanySettingsToUI();
+  switchTab('dashboard');
+}
+
+async function attemptForgotPassword(){
+  const email = document.getElementById('authEmail').value.trim();
+  const errEl = document.getElementById('authError');
+  errEl.classList.add('hidden');
+  if (!email){
+    errEl.textContent = 'Enter your email above first, then click "Forgot password?" again.';
+    errEl.classList.remove('hidden');
+    return;
+  }
+  if (!sbClient) return;
+  const { error } = await sbClient.auth.resetPasswordForEmail(email);
+  errEl.classList.remove('hidden');
+  errEl.style.background = error ? '' : '#E4ECE4';
+  errEl.style.color = error ? '' : 'var(--good)';
+  errEl.textContent = error ? (error.message || 'Could not send reset email.') : 'Password reset email sent — check your inbox.';
+}
+
+async function attemptSignOut(){
+  if (sbClient) await sbClient.auth.signOut();
+  currentAuthUser = null;
+  updateAuthUI();
+  showAuthGate();
+}
+
+function attachAuthEvents(){
+  document.getElementById('btnAuthSignIn').addEventListener('click', attemptSignIn);
+  document.getElementById('authPassword').addEventListener('keydown', e => { if (e.key === 'Enter') attemptSignIn(); });
+  document.getElementById('authEmail').addEventListener('keydown', e => { if (e.key === 'Enter') attemptSignIn(); });
+  document.getElementById('btnAuthForgotPw').addEventListener('click', attemptForgotPassword);
+  document.getElementById('btnSignOut').addEventListener('click', attemptSignOut);
+}
+
+// Checks for an existing Supabase session and gates the app accordingly. If Supabase isn't
+// configured at all, authentication is skipped entirely and the app opens straight to the dashboard.
+async function checkAuthAndInit(){
+  // If no Supabase URL/key are set at all, auth is intentionally off — open straight to the dashboard.
+  if (!isSupabaseConfigured()){
+    hideAuthGate();
+    switchTab('dashboard');
+    return;
+  }
+
+  initSupabaseClient();
+
+  // Supabase IS configured but the client library didn't load/initialize (blocked script, offline,
+  // bad URL/key, etc). Fail CLOSED — show the login screen with an error — rather than silently
+  // granting access to the dashboard. This is the bug that let people in without logging in.
+  if (!sbClient || !window.supabase){
+    console.error('Supabase client failed to initialize. window.supabase is', typeof window.supabase);
+    showAuthGate();
+    const errEl = document.getElementById('authError');
+    if (errEl){
+      errEl.textContent = 'Could not load the sign-in library. Check your internet connection or ad blocker, then reload the page.';
+      errEl.classList.remove('hidden');
+    }
+    return;
+  }
+
+  sbClient.auth.onAuthStateChange((event, session) => {
+    if (event === 'SIGNED_OUT'){
+      currentAuthUser = null;
+      updateAuthUI();
+      showAuthGate();
+    }
+  });
+
+  try {
+    const { data: { session }, error } = await sbClient.auth.getSession();
+    if (error) throw error;
+    if (session && session.user){
+      currentAuthUser = session.user;
+      updateAuthUI();
+      hideAuthGate();
+      switchTab('dashboard');
+    } else {
+      showAuthGate();
+    }
+  } catch (e) {
+    console.error('Supabase getSession failed:', e);
+    showAuthGate();
+    const errEl = document.getElementById('authError');
+    if (errEl){
+      errEl.textContent = 'Could not reach Supabase to check your session (' + (e.message || 'network error') + '). You can still try signing in below.';
+      errEl.classList.remove('hidden');
+    }
+  }
 }
 
 // ---------- Init ----------
@@ -2808,8 +3298,9 @@ document.addEventListener('DOMContentLoaded', () => {
   attachEvents();
   attachPoEvents();
   attachSettingsEvents();
+  attachAuthEvents();
   applyCompanySettingsToUI();
-  switchTab('dashboard');
+  checkAuthAndInit();
 });
 
 </script>
