@@ -3097,7 +3097,10 @@ function openEditAttachmentModal(id){
         <div class="field" style="margin-bottom:4px; padding-top:12px; border-top:1px solid var(--border);">
           <label>PDF File</label>
           <div id="editAttFileLabel" style="font-size:12px; color:var(--gray); margin-bottom:8px;">${currentFileLabel}</div>
-          <button class="btn btn-sm" id="btnChooseEditAttFile" type="button">Choose New PDF to Replace It</button>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            ${!att.link ? `<button class="btn btn-sm btn-gold" id="btnViewMainPdf" type="button">View / Open Current PDF</button>` : ''}
+            <button class="btn btn-sm" id="btnChooseEditAttFile" type="button">Choose New PDF to Replace It</button>
+          </div>
           <input type="file" id="editAttFileInput" class="file-input" accept="application/pdf">
         </div>
 
@@ -3148,6 +3151,8 @@ function openEditAttachmentModal(id){
 
   document.getElementById('modalCancel').addEventListener('click', closeModal);
   document.getElementById('modalOverlay').addEventListener('click', (e) => { if (e.target.id === 'modalOverlay') closeModal(); });
+  const btnViewMainPdf = document.getElementById('btnViewMainPdf');
+  if (btnViewMainPdf) btnViewMainPdf.addEventListener('click', () => viewAttachment(att));
   document.getElementById('btnChooseSupportingDoc').addEventListener('click', () => document.getElementById('supportingDocFileInput').click());
   document.getElementById('supportingDocFileInput').addEventListener('change', e => {
     if (!e.target.files.length) return;
