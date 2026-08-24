@@ -3132,15 +3132,17 @@ function buildBankPdf(proj){
         ty = y;
       }
     }
-    // column x-positions across contentWidth
+    // column x-positions across contentWidth — label gets its own generous lane so long scenario
+    // names never crowd into the Cost % column next to it
     const c = {
       label: leftColX + padX,
-      cost:  leftColX + contentWidth*0.185,
-      price: leftColX + contentWidth*0.29,
-      sale:  leftColX + contentWidth*0.42,
-      fee:   leftColX + contentWidth*0.555,
-      build: leftColX + contentWidth*0.70,
-      margd: leftColX + contentWidth*0.855,
+      labelMaxW: contentWidth*0.20,
+      cost:  leftColX + contentWidth*0.29,
+      price: leftColX + contentWidth*0.395,
+      sale:  leftColX + contentWidth*0.52,
+      fee:   leftColX + contentWidth*0.65,
+      build: leftColX + contentWidth*0.78,
+      margd: leftColX + contentWidth*0.90,
       margp: leftColX + contentWidth - padX
     };
 
@@ -3173,8 +3175,8 @@ function buildBankPdf(proj){
       doc.roundedRect(margin, ty, 4, rowH, 2, 2, 'F');
 
       const midY = ty + rowH/2 + 3;
-      doc.setFont(FONT,'bold'); doc.setFontSize(10); doc.setTextColor(INK[0],INK[1],INK[2]);
-      const labelLines = doc.splitTextToSize(r.label, contentWidth*0.16);
+      doc.setFont(FONT,'bold'); doc.setFontSize(9.5); doc.setTextColor(INK[0],INK[1],INK[2]);
+      const labelLines = doc.splitTextToSize(r.label, c.labelMaxW);
       doc.text(labelLines[0], c.label, midY);
 
       const statCell = (x, label, value, color, big) => {
