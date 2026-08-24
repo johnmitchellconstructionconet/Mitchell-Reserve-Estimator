@@ -234,6 +234,11 @@ tr.po-not-ready{opacity:0.55;}
 .scenario-card-tag{font-size:10.5px; color:var(--gray); margin-bottom:14px;}
 .scenario-card-empty{font-size:12.5px; color:var(--gray-light); font-style:italic; padding:20px 0;}
 .scenario-card-margin-label{font-size:10px; text-transform:uppercase; letter-spacing:0.06em; color:var(--gray); font-weight:600; margin-bottom:2px;}
+.stress-input-row{display:flex; gap:10px; margin:10px 0 14px; padding:10px; background:var(--bg); border-radius:8px;}
+.stress-input-field{flex:1;}
+.stress-input-field label{display:block; font-size:9.5px; text-transform:uppercase; letter-spacing:0.05em; color:var(--gray); font-weight:600; margin-bottom:4px;}
+.stress-input-field input{width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:6px; font-size:13px; font-weight:700; background:var(--white); color:var(--ink); font-variant-numeric:tabular-nums;}
+.stress-input-field input:focus{outline:none; border-color:var(--ink);}
 .scenario-card-margin-value{font-size:28px; font-weight:800; font-variant-numeric:tabular-nums; line-height:1.1;}
 .scenario-card-margin-sub{font-size:12.5px; font-weight:600; font-variant-numeric:tabular-nums; margin-top:2px; margin-bottom:14px;}
 .scenario-card-divider{border-top:1px solid var(--border); margin:0 0 12px;}
@@ -535,7 +540,6 @@ tr.subtotal-row td{
       <div class="field"><label>Target Sales Price ($)</label><input id="pTargetSale" type="number" min="0" step="1000" placeholder="e.g. 1250000"></div>
       <div class="field"><label>Best Case Sales Price ($)</label><input id="pBestSale" type="number" min="0" step="1000" placeholder="e.g. 1350000"></div>
       <div class="field"><label>Worst Case Sales Price ($)</label><input id="pWorstSale" type="number" min="0" step="1000" placeholder="e.g. 1150000"></div>
-      <div class="field"><label>Stress Test Swing (%)</label><input id="pStressTestPct" type="number" min="0" step="1" value="10" placeholder="e.g. 10"></div>
     </div>
   </div>
 
@@ -1177,13 +1181,32 @@ function saveAppState(){
   } catch (e) { /* storage unavailable (private browsing, quota, etc) — edits just won't persist across reloads */ }
 }
 
+// Fields that have been added to the project schema over time. When an older saved project is
+// loaded, any of these it's missing get filled in with a sensible default — existing values are
+// NEVER touched (the check is `=== undefined`, so an existing 0 or '' is left exactly as-is).
+const PROJECT_FIELD_DEFAULTS = {
+  targetSalePrice: '', contingencyPct: 10, bestCaseSalePrice: '', worstCaseSalePrice: '',
+  maxBuildCost: '', maxBuildCostAuto: true, lotCost: '', realtorFeePct: 6,
+  stressACostPct: 10, stressAPricePct: -10, stressBCostPct: -10, stressBPricePct: 10
+};
+function hydrateProject(proj){
+  if (!proj || !proj.project) return proj;
+  Object.keys(PROJECT_FIELD_DEFAULTS).forEach(key => {
+    if (proj.project[key] === undefined){
+      proj.project[key] = PROJECT_FIELD_DEFAULTS[key];
+    }
+  });
+  if (proj.status === undefined) proj.status = 'active';
+  return proj;
+}
+
 function loadAppState(){
   try {
     const raw = localStorage.getItem(APP_STATE_KEY);
     if (!raw) return;
     const parsed = JSON.parse(raw);
     if (parsed && Array.isArray(parsed.projects)){
-      app.projects = parsed.projects;
+      app.projects = parsed.projects.map(hydrateProject);
       app.nextProjectId = parsed.nextProjectId || (Math.max(0, ...parsed.projects.map(p=>p.id||0)) + 1);
     }
   } catch (e) { /* corrupted or unreadable — start fresh rather than crash */ }
@@ -1308,7 +1331,7 @@ function newProjectShell(name, sqft){
     id: app.nextProjectId++,
     createdAt: Date.now(),
     status: 'active', // 'active' | 'closed'
-    project: { name: name||'', address:'', date:'', sqft: sqft || 2500, bed:0, bath:0, garage:0, targetSalePrice:'', contingencyPct:10, bestCaseSalePrice:'', worstCaseSalePrice:'', maxBuildCost:'', maxBuildCostAuto:true, lotCost:'', realtorFeePct:6, stressTestPct:10 },
+    project: { name: name||'', address:'', date:'', sqft: sqft || 2500, bed:0, bath:0, garage:0, targetSalePrice:'', contingencyPct:10, bestCaseSalePrice:'', worstCaseSalePrice:'', maxBuildCost:'', maxBuildCostAuto:true, lotCost:'', realtorFeePct:6, stressACostPct:10, stressAPricePct:-10, stressBCostPct:-10, stressBPricePct:10 },
     items: items,
     scopeNotes: {},
     collapsed: {},
@@ -1420,25 +1443,27 @@ function computeAll(proj){
   const worstCaseVariance = (grandBuilder + contingencyAmount) - maxBuildCost;
   const worstCaseVariancePct = maxBuildCost > 0 ? (worstCaseVariance / maxBuildCost) * 100 : 0;
 
-  // Stress test — a combined "what if cost swings one way AND sales price swings the other way, at
-  // the same time" gut-check, using the Expected case (allInCost + targetSalePrice) as the pivot point.
-  const stressTestPct = Number(proj.project.stressTestPct) || 0;
-  const stressSwing = stressTestPct / 100;
-  const stressCostUpPriceDown = {
-    cost: allInCost * (1 + stressSwing),
-    salePrice: targetSalePrice * (1 - stressSwing)
-  };
-  stressCostUpPriceDown.realtorFee = stressCostUpPriceDown.salePrice * (realtorFeePct / 100);
-  stressCostUpPriceDown.margin = stressCostUpPriceDown.salePrice - stressCostUpPriceDown.realtorFee - stressCostUpPriceDown.cost;
-  stressCostUpPriceDown.marginPct = stressCostUpPriceDown.salePrice > 0 ? (stressCostUpPriceDown.margin / stressCostUpPriceDown.salePrice) * 100 : 0;
+  // Stress test — two fully independent, editable "what if cost and price each move by their own
+  // %" scenarios, pivoting off the Expected case (allInCost + targetSalePrice). Defaults mirror the
+  // classic combo (cost up/price down and vice versa) but every number here can be changed freely.
+  const stressACostPct = proj.project.stressACostPct !== undefined ? (Number(proj.project.stressACostPct)||0) : 10;
+  const stressAPricePct = proj.project.stressAPricePct !== undefined ? (Number(proj.project.stressAPricePct)||0) : -10;
+  const stressBCostPct = proj.project.stressBCostPct !== undefined ? (Number(proj.project.stressBCostPct)||0) : -10;
+  const stressBPricePct = proj.project.stressBPricePct !== undefined ? (Number(proj.project.stressBPricePct)||0) : 10;
 
-  const stressCostDownPriceUp = {
-    cost: allInCost * (1 - stressSwing),
-    salePrice: targetSalePrice * (1 + stressSwing)
-  };
-  stressCostDownPriceUp.realtorFee = stressCostDownPriceUp.salePrice * (realtorFeePct / 100);
-  stressCostDownPriceUp.margin = stressCostDownPriceUp.salePrice - stressCostDownPriceUp.realtorFee - stressCostDownPriceUp.cost;
-  stressCostDownPriceUp.marginPct = stressCostDownPriceUp.salePrice > 0 ? (stressCostDownPriceUp.margin / stressCostDownPriceUp.salePrice) * 100 : 0;
+  function buildStressScenario(costPct, pricePct){
+    const s = {
+      costPct, pricePct,
+      cost: allInCost * (1 + costPct/100),
+      salePrice: targetSalePrice * (1 + pricePct/100)
+    };
+    s.realtorFee = s.salePrice * (realtorFeePct / 100);
+    s.margin = s.salePrice - s.realtorFee - s.cost;
+    s.marginPct = s.salePrice > 0 ? (s.margin / s.salePrice) * 100 : 0;
+    return s;
+  }
+  const stressScenarioA = buildStressScenario(stressACostPct, stressAPricePct);
+  const stressScenarioB = buildStressScenario(stressBCostPct, stressBPricePct);
 
   return { coreByCategory, coreProjectTotal, catTotals, grandBuilder, veSavingsTotal, sqft,
     lotCost, realtorFeePct, allInCost, targetSalePrice, targetRealtorFee, marginVsCost, marginVsCostPct,
@@ -1446,7 +1471,7 @@ function computeAll(proj){
     bestCaseSalePrice, worstCaseSalePrice, bestCaseRealtorFee, worstCaseRealtorFee,
     bestCaseMargin, bestCaseMarginPct, worstCaseMargin, worstCaseMarginPct,
     maxBuildCostAuto, maxBuildCost, buildCostVariance, buildCostVariancePct, worstCaseVariance, worstCaseVariancePct,
-    stressTestPct, stressCostUpPriceDown, stressCostDownPriceUp };
+    stressScenarioA, stressScenarioB };
 }
 
 // ---------- Dashboard rendering ----------
@@ -1750,18 +1775,29 @@ function renderMarginBar(calc){
     `;
   }
 
-  // Combined stress test: cost swings one way AND sales price swings the other way, at the same time —
-  // a quick gut-check on how exposed the deal is if things move against you (or in your favor) on both sides at once.
+  // Combined stress test: two fully independent, live-editable "cost moves X% / price moves Y%"
+  // scenarios, so you can freely play with the numbers instead of being locked to one fixed swing.
   let stressHtml = '';
   if (calc.targetSalePrice){
-    const swingCard = (accentClass, name, tag, s) => {
+    const fmtPct = n => (n > 0 ? '+' : '') + n;
+    const swingCard = (accentClass, letter, s, tagText) => {
       const mc = marginColor(s.marginPct);
       return `
         <div class="scenario-card">
           <div class="scenario-card-accent ${accentClass}"></div>
           <div class="scenario-card-body">
-            <div class="scenario-card-title"><span class="sc-name">${name}</span></div>
-            <div class="scenario-card-tag">${tag}</div>
+            <div class="scenario-card-title"><span class="sc-name">Cost ${fmtPct(s.costPct)}% / Price ${fmtPct(s.pricePct)}%</span></div>
+            <div class="scenario-card-tag">${tagText}</div>
+            <div class="stress-input-row">
+              <div class="stress-input-field">
+                <label>Cost Change %</label>
+                <input type="number" step="1" value="${s.costPct}" data-stress-scenario="${letter}" data-stress-field="cost">
+              </div>
+              <div class="stress-input-field">
+                <label>Price Change %</label>
+                <input type="number" step="1" value="${s.pricePct}" data-stress-scenario="${letter}" data-stress-field="price">
+              </div>
+            </div>
             <div class="scenario-card-margin-label">Net Margin</div>
             <div class="scenario-card-margin-value" style="color:${mc}">${s.marginPct.toFixed(1)}%</div>
             <div class="scenario-card-margin-sub" style="color:${mc}">${fmtMoney(s.margin)}</div>
@@ -1779,14 +1815,14 @@ function renderMarginBar(calc){
     const baseMc = marginColor(calc.marginVsCostPct);
     stressHtml = `
       <div class="scenario-range" style="margin-top:24px; padding-top:20px;">
-        <div class="sr-label" style="margin-bottom:2px;">Combined Stress Test — Cost &amp; Price Move Against Each Other at Once</div>
+        <div class="sr-label" style="margin-bottom:2px;">Stress Test — Play With Cost &amp; Price Together</div>
         <p style="font-size:11.5px; color:var(--gray); margin:4px 0 14px;">
-          What if cost and sales price each move ${calc.stressTestPct}% — in opposite directions, at the same time? Both scenarios flex off your Expected case
-          (<b style="color:${baseMc}">${calc.marginVsCostPct.toFixed(1)}% margin</b> today).
+          Set any cost % and price % you want on each card below — both flex live off your Expected case
+          (<b style="color:${baseMc}">${calc.marginVsCostPct.toFixed(1)}% margin</b> today). Negative numbers work too.
         </p>
         <div class="scenario-cards">
-          ${swingCard('worst', `Cost +${calc.stressTestPct}% / Price &minus;${calc.stressTestPct}%`, 'The bad-day combo — overruns while the market softens', calc.stressCostUpPriceDown)}
-          ${swingCard('best', `Cost &minus;${calc.stressTestPct}% / Price +${calc.stressTestPct}%`, 'The good-day combo — costs come in under and the market is hot', calc.stressCostDownPriceUp)}
+          ${swingCard('worst', 'A', calc.stressScenarioA, 'Try the "bad day" combo, or anything else')}
+          ${swingCard('best', 'B', calc.stressScenarioB, 'Try the "good day" combo, or anything else')}
         </div>
       </div>
     `;
@@ -1807,6 +1843,20 @@ function renderMarginBar(calc){
       ${stressHtml}
     </div>
   `;
+}
+
+// Re-renders the margin bar (which redraws everything, including the stress-test inputs) while
+// keeping the input the user is actively typing in focused, so a keystroke doesn't lose the cursor.
+function renderMarginBarPreserveFocus(calc, sourceInput){
+  const scenario = sourceInput.dataset.stressScenario;
+  const field = sourceInput.dataset.stressField;
+  const selStart = sourceInput.selectionStart;
+  renderMarginBar(calc);
+  const newInput = document.querySelector(`[data-stress-scenario="${scenario}"][data-stress-field="${field}"]`);
+  if (newInput){
+    newInput.focus();
+    try { newInput.setSelectionRange(selStart, selStart); } catch (e) { /* number inputs don't support this in every browser — harmless if it fails */ }
+  }
 }
 
 // ---------- Rendering: Category tables ----------
@@ -1987,6 +2037,21 @@ function saveAppStateDebounced(){
 function attachEvents(){
   const container = document.getElementById('categoriesContainer');
 
+  document.getElementById('marginBar').addEventListener('input', e => {
+    const scenario = e.target.dataset.stressScenario;
+    const field = e.target.dataset.stressField;
+    if (!scenario || !field) return;
+    const proj = current();
+    const val = e.target.value === '' ? 0 : Number(e.target.value);
+    if (scenario === 'A' && field === 'cost') proj.project.stressACostPct = val;
+    if (scenario === 'A' && field === 'price') proj.project.stressAPricePct = val;
+    if (scenario === 'B' && field === 'cost') proj.project.stressBCostPct = val;
+    if (scenario === 'B' && field === 'price') proj.project.stressBPricePct = val;
+    const calc = computeAll(proj);
+    renderMarginBarPreserveFocus(calc, e.target);
+    saveAppStateDebounced();
+  });
+
   container.addEventListener('click', e => {
     const toggle = e.target.closest('[data-toggle]');
     if (toggle){
@@ -2073,7 +2138,6 @@ function attachEvents(){
   document.getElementById('pContingency').addEventListener('input', e => { current().project.contingencyPct = e.target.value; render(); });
   document.getElementById('pBestSale').addEventListener('input', e => { current().project.bestCaseSalePrice = e.target.value; render(); });
   document.getElementById('pWorstSale').addEventListener('input', e => { current().project.worstCaseSalePrice = e.target.value; render(); });
-  document.getElementById('pStressTestPct').addEventListener('input', e => { current().project.stressTestPct = e.target.value; render(); });
 
   document.getElementById('btnExportBankPdf').addEventListener('click', () => {
     if (!current()) return;
@@ -2152,7 +2216,6 @@ function syncProjectFieldsToInputs(){
   document.getElementById('pContingency').value = proj.project.contingencyPct;
   document.getElementById('pBestSale').value = proj.project.bestCaseSalePrice;
   document.getElementById('pWorstSale').value = proj.project.worstCaseSalePrice;
-  document.getElementById('pStressTestPct').value = proj.project.stressTestPct;
   refreshCrumb();
 }
 
@@ -2203,6 +2266,7 @@ function loadProjectFile(e){
         loaded.nextPoRowId = Math.max(...loaded.poList.map(r=>r.id), 0) + 1;
         loaded.nextPoNumber = 1001;
       }
+      hydrateProject(loaded); // fill in any fields added since this file was saved — never touches what's already there
       app.projects.push(loaded);
       openProject(loaded.id);
     } catch(err){
@@ -2930,6 +2994,70 @@ function buildBankPdf(proj){
     return ty + cardH;
   }
 
+  // Two-card stress test — cost % and price % move independently, each flexed off the Expected case.
+  function drawStressCards(startY, heading, subtitle){
+    let ty = startY;
+    if (heading){
+      doc.setFont(FONT,'bold'); doc.setFontSize(11); doc.setTextColor(INK[0],INK[1],INK[2]);
+      doc.text(heading, leftColX, ty); ty += 15;
+    }
+    if (subtitle){
+      doc.setFont(FONT,'normal'); doc.setFontSize(8); doc.setTextColor(130,125,115);
+      const subLines = doc.splitTextToSize(subtitle, contentWidth);
+      doc.text(subLines, leftColX, ty);
+      ty += subLines.length * 10.5 + 12;
+    }
+
+    const gap = 14;
+    const cardW = (contentWidth - gap) / 2;
+    const cardH = 176;
+    const fmtPct = n => (n > 0 ? '+' : '') + n;
+
+    const scenarios = [
+      { s: calc.stressScenarioA, accent:[166,71,60], bg:[252,245,244] },
+      { s: calc.stressScenarioB, accent:[76,107,79], bg:[244,247,244] }
+    ];
+
+    scenarios.forEach((row, i) => {
+      const s = row.s;
+      const x = leftColX + i*(cardW+gap);
+      const padX = 13;
+
+      doc.setFillColor(row.bg[0], row.bg[1], row.bg[2]);
+      doc.roundedRect(x, ty, cardW, cardH, 7, 7, 'F');
+      doc.setDrawColor(224,220,212); doc.setLineWidth(0.75);
+      doc.roundedRect(x, ty, cardW, cardH, 7, 7, 'S');
+      doc.setFillColor(row.accent[0], row.accent[1], row.accent[2]);
+      doc.roundedRect(x, ty, cardW, 4, 2, 2, 'F');
+
+      let cy = ty + 22;
+      doc.setFont(FONT,'bold'); doc.setFontSize(11); doc.setTextColor(INK[0],INK[1],INK[2]);
+      doc.text(`Cost ${fmtPct(s.costPct)}% / Price ${fmtPct(s.pricePct)}%`, x+padX, cy);
+      cy += 22;
+
+      doc.setDrawColor(224,220,212); doc.setLineWidth(0.5);
+      doc.line(x+padX, cy, x+cardW-padX, cy);
+      cy += 16;
+
+      const statRow = (label, value, color) => {
+        doc.setFont(FONT,'normal'); doc.setFontSize(6.8); doc.setTextColor(140,135,125);
+        doc.text(label.toUpperCase(), x+padX, cy);
+        doc.setFont(FONT,'bold'); doc.setFontSize(10);
+        doc.setTextColor(color?color[0]:INK[0], color?color[1]:INK[1], color?color[2]:INK[2]);
+        doc.text(value, x+padX, cy+11);
+        cy += 24;
+      };
+      statRow('Sales Price', fmtMoney(s.salePrice));
+      statRow('Realtor Fee', fmtMoney(s.realtorFee));
+      statRow('Build + Lot Cost', fmtMoney(s.cost));
+      const mc = s.marginPct>=20?[76,107,79]:(s.marginPct>=10?[138,109,59]:[166,71,60]);
+      statRow('Net Margin', `${fmtMoney(s.margin)} (${s.marginPct.toFixed(1)}%)`, mc);
+    });
+
+    doc.setTextColor(INK[0],INK[1],INK[2]);
+    return ty + cardH;
+  }
+
   function drawColHeader(){
     letterheadLight();
     doc.setFont(FONT,'bold'); doc.setFontSize(9);
@@ -2985,7 +3113,7 @@ function buildBankPdf(proj){
   cell('Builder Cost', fmtMoney(calc.grandBuilder), 0);
   cell('Lot / Land Cost', fmtMoney(calc.lotCost), 1);
   cell('Contingency', `${calc.contingencyPct}% \u2022 ${fmtMoney(calc.contingencyAmount)}`, 2);
-  cell('Worst Case Cost', fmtMoney(calc.worstCaseBuildCost), 3);
+  cell('Total Cost (Build + Lot)', fmtMoney(calc.allInCost), 3);
   y += boxH + 26;
 
   y = drawScenarioCards(
@@ -2994,6 +3122,16 @@ function buildBankPdf(proj){
     `Net margin = Sales Price - Realtor Fee (${calc.realtorFeePct}% of sales price) - Build Cost - Lot Cost, with Worst Case adding your ${calc.contingencyPct}% contingency reserve. All figures are internal builder cost, no markup applied.`
   );
   y += 26;
+
+  if (calc.targetSalePrice){
+    checkSpace(230);
+    y = drawStressCards(
+      y,
+      'Stress Test — Cost & Price Move Together',
+      `A gut-check on how exposed this deal is if cost and sales price each move by their own %, flexed off the Expected case (${calc.marginVsCostPct.toFixed(1)}% margin today).`
+    );
+    y += 26;
+  }
 
   // ---------- Line item detail ----------
   const itemsByCategory = {};
