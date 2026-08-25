@@ -3820,6 +3820,14 @@ async function openCompareModal(){
   const wrap = document.getElementById('compareGridWrap');
   if (!wrap) return; // modal was closed before the URLs finished loading
 
+  // Hides the browser's PDF viewer toolbar/side panels and forces it to fit the page to the width
+  // of its column, so nothing needs manual zooming or a page-thumbnail sidebar to look right.
+  const withPdfViewerParams = (url) => {
+    if (!url) return url;
+    const params = 'toolbar=0&navpanes=0&scrollbar=0&statusbar=0&view=FitH&zoom=page-width';
+    return url.includes('#') ? `${url}&${params}` : `${url}#${params}`;
+  };
+
   wrap.innerHTML = items.map((a, i) => {
     const url = urls[i];
     return `
@@ -3828,7 +3836,7 @@ async function openCompareModal(){
           ${escapeAttr(a.name)}
         </div>
         ${url
-          ? `<iframe src="${url}" style="flex:1; border:none; width:100%;"></iframe>`
+          ? `<iframe src="${withPdfViewerParams(url)}" style="flex:1; border:none; width:100%;"></iframe>`
           : `<div style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; color:var(--gray); font-size:12.5px; padding:20px; text-align:center;">
                ${a.link ? 'This is a link, not a PDF — open it directly instead.' : 'No PDF available to preview.'}
                ${a.link ? `<button class="btn btn-sm" data-compare-open-link="${a.id}">Open Link</button>` : ''}
