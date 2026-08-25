@@ -2979,7 +2979,7 @@ async function uploadAttachment(file){
     }
     const { error: insErr } = await sbClient.from(ATTACHMENTS_TABLE).insert([{
       project_name: nameKey, category, name, notes, neighborhood, storage_path: path, size_bytes: file.size,
-      status: 'review', include_in_bank_pdf: true, created_by: currentAuthUser ? currentAuthUser.email : null
+      status: 'review', include_in_bank_pdf: false, created_by: currentAuthUser ? currentAuthUser.email : null
     }]);
     if (insErr){ alert('Could not save attachment record: ' + insErr.message); return; }
     finishAttachmentUpload();
@@ -2991,7 +2991,7 @@ async function uploadAttachment(file){
     alert(`This file is ${fmtBytes(file.size)}. Without shared Supabase Storage active, local files are capped at ${fmtBytes(MAX_LOCAL_ATTACHMENT_BYTES)}. Connect Supabase (and name this project) for larger files and team-wide visibility.`);
     return;
   }
-  const record = { id: proj.nextAttachmentId++, name, category, notes, neighborhood, uploadedAt: Date.now(), sizeBytes: file.size, includeInBankPdf: true, status: 'review', documents: [] };
+  const record = { id: proj.nextAttachmentId++, name, category, notes, neighborhood, uploadedAt: Date.now(), sizeBytes: file.size, includeInBankPdf: false, status: 'review', documents: [] };
   const reader = new FileReader();
   reader.onload = (e) => {
     record.fileDataUrl = e.target.result;
@@ -3018,7 +3018,7 @@ async function addAttachmentLink(){
   if (sbClient && nameKey && attachmentsSharedMode){
     const { error } = await sbClient.from(ATTACHMENTS_TABLE).insert([{
       project_name: nameKey, category, name, notes, neighborhood, link,
-      status: 'review', include_in_bank_pdf: true, created_by: currentAuthUser ? currentAuthUser.email : null
+      status: 'review', include_in_bank_pdf: false, created_by: currentAuthUser ? currentAuthUser.email : null
     }]);
     if (error){ alert('Could not save link: ' + error.message); return; }
     document.getElementById('attLinkInput').value = '';
@@ -3026,7 +3026,7 @@ async function addAttachmentLink(){
     return;
   }
 
-  const record = { id: proj.nextAttachmentId++, name, category, notes, neighborhood, link, uploadedAt: Date.now(), includeInBankPdf: true, status: 'review', documents: [] };
+  const record = { id: proj.nextAttachmentId++, name, category, notes, neighborhood, link, uploadedAt: Date.now(), includeInBankPdf: false, status: 'review', documents: [] };
   proj.attachments.push(record);
   document.getElementById('attLinkInput').value = '';
   finishAttachmentUpload();
@@ -3523,16 +3523,16 @@ async function renderAttachments(){
     if ((att.documents || []).length) metaBits.push(`${att.documents.length} supporting doc${att.documents.length===1?'':'s'}`);
     return `
       <div class="att-row">
+        <label class="att-include-toggle">
+          <input type="checkbox" ${att.includeInBankPdf ? 'checked' : ''} data-att-include="${att.id}">
+          Bank PDF
+        </label>
         <div class="att-icon" data-att-open-details="${att.id}" style="cursor:pointer;">${linkIcon}</div>
         <div class="att-info" data-att-open-details="${att.id}" style="cursor:pointer;">
           <div class="att-name">${escapeAttr(att.name)}</div>
           <div class="att-meta">${metaBits.join(' · ')}</div>
         </div>
         ${statusSegmented(att)}
-        <label class="att-include-toggle">
-          <input type="checkbox" ${att.includeInBankPdf ? 'checked' : ''} data-att-include="${att.id}">
-          Bank PDF
-        </label>
         <div class="att-actions">
           <button class="icon-btn" data-att-view="${att.id}" title="${att.link ? 'Open Link' : 'View'}">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M1.3 8s2.4-4.5 6.7-4.5S14.7 8 14.7 8s-2.4 4.5-6.7 4.5S1.3 8 1.3 8Z" stroke="currentColor" stroke-width="1.3"/><circle cx="8" cy="8" r="2" stroke="currentColor" stroke-width="1.3"/></svg>
