@@ -2978,13 +2978,16 @@ function normalizeRemoteAttachment(row){
 }
 
 function readAttSpecFields(){
+  // These fields no longer appear on the initial Add form (kept it quick — specs get filled in
+  // later via Edit), but stay guarded in case that ever changes.
+  const val = (id) => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
   return {
-    sqft: document.getElementById('attSqft').value.trim(),
-    lotSizeAcres: document.getElementById('attLotSizeAcres').value.trim(),
-    salePrice: document.getElementById('attSalePrice').value.trim(),
-    bedrooms: document.getElementById('attBedrooms').value.trim(),
-    bathrooms: document.getElementById('attBathrooms').value.trim(),
-    garageBays: document.getElementById('attGarageBays').value.trim()
+    sqft: val('attSqft'),
+    lotSizeAcres: val('attLotSizeAcres'),
+    salePrice: val('attSalePrice'),
+    bedrooms: val('attBedrooms'),
+    bathrooms: val('attBathrooms'),
+    garageBays: val('attGarageBays')
   };
 }
 
@@ -3068,16 +3071,18 @@ async function addAttachmentLink(){
 }
 
 async function finishAttachmentUpload(){
-  document.getElementById('attName').value = '';
-  document.getElementById('attNotes').value = '';
-  document.getElementById('attSqft').value = '';
-  document.getElementById('attLotSizeAcres').value = '';
-  document.getElementById('attSalePrice').value = '';
-  document.getElementById('attBedrooms').value = '';
-  document.getElementById('attBathrooms').value = '';
-  document.getElementById('attGarageBays').value = '';
-  document.getElementById('attChosenFileName').textContent = '';
-  document.getElementById('attFileInput').value = '';
+  const clearVal = (id) => { const el = document.getElementById(id); if (el) el.value = ''; };
+  clearVal('attName');
+  clearVal('attNotes');
+  clearVal('attSqft');
+  clearVal('attLotSizeAcres');
+  clearVal('attSalePrice');
+  clearVal('attBedrooms');
+  clearVal('attBathrooms');
+  clearVal('attGarageBays');
+  const chosenFileName = document.getElementById('attChosenFileName');
+  if (chosenFileName) chosenFileName.textContent = '';
+  clearVal('attFileInput');
   if (sbClient) await refreshPendingApprovalCounts(); // immediate feedback on the notification bar for a fresh upload
   renderAttachments();
   saveAppState();
@@ -3194,25 +3199,19 @@ function openEditAttachmentModal(id){
           <input id="editAttLink" type="url" value="${escapeAttr(att.link || '')}" placeholder="https://... (optional — MLS, Zillow, Google Drive, etc.)">
         </div>
 
-        ${att.category === 'lot' ? `
-        <div class="field" style="margin-bottom:16px; padding-top:12px; border-top:1px solid var(--border);">
-          <label>Linked Comps</label>
-          <p style="font-size:11.5px; color:var(--gray); margin:2px 0 10px;">Attach the comps that back up this lot's value, so they're always right here when you're deciding whether to buy.</p>
-          <div id="linkedCompsChecklist">
-            ${(() => {
-              const availableComps = attachmentsCache.filter(a => a.category === 'comp');
-              if (!availableComps.length) return `<p style="font-size:12px; color:var(--gray-light); font-style:italic;">No comps added to this project yet.</p>`;
-              const linked = att.linkedCompIds || [];
-              return availableComps.map(c => `
-                <label style="display:flex; align-items:center; gap:8px; cursor:pointer; text-transform:none; font-weight:500; color:var(--ink); font-size:13px; margin-bottom:8px;">
-                  <input type="checkbox" class="linked-comp-checkbox" value="${c.id}" ${linked.some(lid => String(lid) === String(c.id)) ? 'checked' : ''} style="width:auto;">
-                  ${escapeAttr(c.name)} <span style="color:var(--gray); font-size:11.5px;">${c.neighborhood ? '— ' + escapeAttr(c.neighborhood) : ''}</span>
-                </label>
-              `).join('');
-            })()}
-          </div>
-        </div>
-        ` : ''}
+        ${att.category === 'comp' ? (() => {
+          const lots = attachmentsCache.filter(a => a.category === 'lot');
+          const currentLot = lots.find(l => (l.linkedCompIds || []).some(cid => String(cid) === String(att.id)));
+          return `
+            <div class="field" style="margin-bottom:16px; padding-top:12px; border-top:1px solid var(--border);">
+              <label>Backs This Lot (optional)</label>
+              <select id="editAttBacksLot">
+                <option value="">— None —</option>
+                ${lots.map(l => `<option value="${l.id}" ${currentLot && String(currentLot.id)===String(l.id) ? 'selected' : ''}>${escapeAttr(l.name)}${l.neighborhood ? ' — ' + escapeAttr(l.neighborhood) : ''}</option>`).join('')}
+              </select>
+            </div>
+          `;
+        })() : ''}
 
         <div class="field" style="margin-bottom:4px; padding-top:12px; border-top:1px solid var(--border);">
           <label>Attached PDFs</label>
@@ -3364,10 +3363,8 @@ async function saveAttachmentEdits(id){
     garageBays: document.getElementById('editAttGarageBays').value.trim(),
     link: document.getElementById('editAttLink').value.trim()
   };
-  const linkedCompsChecklist = document.getElementById('linkedCompsChecklist');
-  if (linkedCompsChecklist){
-    updates.linkedCompIds = Array.from(linkedCompsChecklist.querySelectorAll('.linked-comp-checkbox:checked')).map(cb => cb.value);
-  }
+  const backsLotSelect = document.getElementById('editAttBacksLot');
+  const backsLotId = backsLotSelect ? backsLotSelect.value : undefined;
 
   const nameKey = projectNameKey(proj);
   const isSharedRow = att.source === 'remote' && sbClient;
@@ -3379,7 +3376,6 @@ async function saveAttachmentEdits(id){
         sqft: updates.sqft || null, lot_size_acres: updates.lotSizeAcres || null, sale_price: updates.salePrice || null,
         bedrooms: updates.bedrooms || null, bathrooms: updates.bathrooms || null, garage_bays: updates.garageBays || null
       };
-      if (updates.linkedCompIds) remotePayload.linked_comp_ids = updates.linkedCompIds;
       const { error } = await sbClient.from(ATTACHMENTS_TABLE).update(remotePayload).eq('id', id);
       if (error) throw error;
     } else {
@@ -3389,11 +3385,34 @@ async function saveAttachmentEdits(id){
         saveAppStateDebounced();
       }
     }
+    if (backsLotId !== undefined) await updateLotLinkForComp(id, backsLotId || null);
     closeModal();
     renderAttachments();
   } catch (e) {
     alert('Could not save changes: ' + e.message);
     if (saveBtn){ saveBtn.disabled = false; saveBtn.textContent = 'Save Changes'; }
+  }
+}
+
+// Called from a COMP's own edit form — moves this comp's id into the chosen lot's linkedCompIds,
+// and takes it out of any other lot's list it might have been in. A comp backs at most one lot.
+async function updateLotLinkForComp(compId, newLotId){
+  const proj = current();
+  const lots = attachmentsCache.filter(a => a.category === 'lot');
+  for (const lot of lots){
+    const has = (lot.linkedCompIds || []).some(cid => String(cid) === String(compId));
+    const shouldHave = newLotId && String(lot.id) === String(newLotId);
+    if (has === shouldHave) continue;
+    const newIds = shouldHave
+      ? [...(lot.linkedCompIds || []), compId]
+      : (lot.linkedCompIds || []).filter(cid => String(cid) !== String(compId));
+    lot.linkedCompIds = newIds;
+    if (lot.source === 'remote' && sbClient){
+      await sbClient.from(ATTACHMENTS_TABLE).update({ linked_comp_ids: newIds }).eq('id', lot.id);
+    } else {
+      const localLot = proj.attachments.find(a => a.id === lot.id);
+      if (localLot){ localLot.linkedCompIds = newIds; saveAppStateDebounced(); }
+    }
   }
 }
 
@@ -3853,15 +3872,7 @@ function openAddAttachmentModal(){
             <div class="field"><label>Name / Address</label><input id="attName" type="text" placeholder="e.g. 412 Ridgeline Dr — Sold $712k"></div>
             <div class="field"><label>Notes</label><input id="attNotes" type="text" placeholder="Optional — sale date, condition, etc."></div>
           </div>
-
-          <div class="grid-info" style="margin-top:16px; padding-top:16px; border-top:1px solid var(--border);">
-            <div class="field"><label>Square Footage</label><input id="attSqft" type="number" min="0" step="1" placeholder="e.g. 2500"></div>
-            <div class="field"><label>Lot Size (acres)</label><input id="attLotSizeAcres" type="number" min="0" step="0.01" placeholder="e.g. 0.35"></div>
-            <div class="field"><label>Sale / Asking Price ($)</label><input id="attSalePrice" type="number" min="0" step="1000" placeholder="e.g. 725000"></div>
-            <div class="field"><label>Bedrooms</label><input id="attBedrooms" type="number" min="0" step="1" placeholder="e.g. 4"></div>
-            <div class="field"><label>Bathrooms</label><input id="attBathrooms" type="number" min="0" step="0.5" placeholder="e.g. 2.5"></div>
-            <div class="field"><label>Garage Bays</label><input id="attGarageBays" type="number" min="0" step="1" placeholder="e.g. 2"></div>
-          </div>
+          <p style="font-size:11.5px; color:var(--gray); margin:10px 0 0;">Sqft, lot size, price, and bed/bath/garage counts can be filled in afterward — click into the comp or lot once it's added.</p>
 
           <div style="margin-top:16px; padding-top:16px; border-top:1px solid var(--border); display:flex; gap:24px; flex-wrap:wrap;">
             <div style="flex:1; min-width:240px;">
