@@ -2561,7 +2561,7 @@ function attachEvents(){
 
   document.getElementById('btnPrint').addEventListener('click', () => {
     if (!current()) return;
-    switchTab('report'); renderReport(); setTimeout(()=>window.print(), 200);
+    openExportPackageModal();
   });
   document.getElementById('btnSaveProject').addEventListener('click', saveProject);
   document.getElementById('btnLoadProject').addEventListener('click', () => document.getElementById('fileInput').click());
@@ -4257,7 +4257,7 @@ function buildPoPdf(row, proj){
 }
 
 // ---------- Bank / Lender Export ----------
-async function buildBankPdf(proj){
+async function buildBankPdfDoc(proj){
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
   const calc = computeAll(proj);
@@ -4649,64 +4649,420 @@ async function buildBankPdf(proj){
     doc.text(`Page ${i} of ${pageCount}  —  Generated ${dateStr}`, pageWidth/2, pageHeight - 22, {align:'center'});
   }
 
-  const safeName = (p.name || 'mcd-estimate').replace(/[^a-z0-9\-_]+/gi,'_');
-  const filename = `${safeName}_Bank_Cost_Margin_Package.pdf`;
+  return doc;
+}
 
-  // Pull comps/lots from whichever source is actually active for this project (shared Supabase
-  // table, or local) — not just proj.attachments, since shared-mode data doesn't live there.
+// Fetches this project's comps/lots (from whichever source is actually active — shared Supabase
+// table, or local) and returns only the ones that are real PDFs (link-only entries can't be merged
+// into a PDF) and, when idsFilter is given, only the ones in that id set.
+async function getMergeableAttachments(proj, idsFilter){
   let allAttachments = proj.attachments || [];
   const nameKey = projectNameKey(proj);
   if (sbClient && nameKey){
     const { data, error } = await sbClient.from(ATTACHMENTS_TABLE).select('*').eq('project_name', nameKey);
     if (!error) allAttachments = (data || []).map(normalizeRemoteAttachment);
   }
-  // Only real PDFs can be merged into a PDF — link-only attachments (MLS links, etc.) can't be, so skip those here.
-  const attachmentsToInclude = allAttachments.filter(a => a.includeInBankPdf && (a.storagePath || a.fileDataUrl));
+  let list = allAttachments.filter(a => (a.storagePath || a.fileDataUrl));
+  if (idsFilter) list = list.filter(a => idsFilter.has(String(a.id)));
+  return list;
+}
 
-  if (!attachmentsToInclude.length || !window.PDFLib){
-    if (attachmentsToInclude.length && !window.PDFLib){
-      console.error('pdf-lib failed to load — exporting the cost analysis without attached comps/lots merged in.');
-    }
+async function fetchAttachmentBytes(att){
+  if (att.storagePath && sbClient){
+    const { data, error } = await sbClient.storage.from(ATTACHMENTS_BUCKET).download(att.storagePath);
+    if (error) throw error;
+    return await data.arrayBuffer();
+  } else if (att.fileDataUrl){
+    return await (await fetch(att.fileDataUrl)).arrayBuffer();
+  }
+  throw new Error('file unavailable in this browser/session');
+}
+
+// Merges a list of jsPDF docs and PDF attachments into one combined PDF and triggers a single download.
+async function mergeAndDownload(docs, attachments, filename){
+  if (!window.PDFLib){
+    console.error('pdf-lib failed to load — downloading just the first document instead of a combined package.');
+    if (docs[0]) docs[0].save(filename);
+    return;
+  }
+  const { PDFDocument } = window.PDFLib;
+  const mergedPdf = await PDFDocument.create();
+
+  for (const doc of docs){
+    if (!doc) continue;
+    try {
+      const donor = await PDFDocument.load(doc.output('arraybuffer'));
+      const pages = await mergedPdf.copyPages(donor, donor.getPageIndices());
+      pages.forEach(pg => mergedPdf.addPage(pg));
+    } catch (e){ console.error('Could not add a section to the combined package:', e); }
+  }
+
+  for (const att of (attachments || [])){
+    try {
+      const bytes = await fetchAttachmentBytes(att);
+      const donor = await PDFDocument.load(bytes);
+      const pages = await mergedPdf.copyPages(donor, donor.getPageIndices());
+      pages.forEach(pg => mergedPdf.addPage(pg));
+    } catch (e){ console.error(`Could not merge attachment "${att.name}":`, e); }
+  }
+
+  const mergedBytes = await mergedPdf.save();
+  const blob = new Blob([mergedBytes], { type: 'application/pdf' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
+// Standalone "Export Bank / Lender Package" button — same as before: the bank PDF plus whichever
+// comps/lots are flagged "Include in Bank PDF".
+async function buildBankPdf(proj){
+  const doc = await buildBankPdfDoc(proj);
+  const safeName = (proj.project.name || 'mcd-estimate').replace(/[^a-z0-9\-_]+/gi,'_');
+  const filename = `${safeName}_Bank_Cost_Margin_Package.pdf`;
+  const attachmentsToInclude = (await getMergeableAttachments(proj)).filter(a => a.includeInBankPdf);
+  if (!attachmentsToInclude.length){
     doc.save(filename);
     return;
   }
+  await mergeAndDownload([doc], attachmentsToInclude, filename);
+}
 
-  // Merge attached comp/lot PDFs onto the end of the cost analysis so the bank gets one combined file.
-  try {
-    const { PDFDocument } = window.PDFLib;
-    const mergedPdf = await PDFDocument.load(doc.output('arraybuffer'));
+// ---------- Cost Analysis PDF (client-safe — no margin, no markup, matches the on-screen report) ----------
+async function buildCostAnalysisPdfDoc(proj){
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+  const calc = computeAll(proj);
+  const p = proj.project;
+  const margin = 50;
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const contentWidth = pageWidth - margin*2;
+  let y = margin;
 
-    for (const att of attachmentsToInclude){
+  const FONT = pdfFontFor();
+  const ACCENT = hexToRgb(COMPANY.accentColor);
+  const INK = hexToRgb(COMPANY.inkColor);
+  const dateStr = new Date().toLocaleDateString('en-US', {year:'numeric', month:'long', day:'numeric'});
+  const leftColX = margin, rightColX = pageWidth/2 + 10;
+
+  function newPage(){ doc.addPage(); y = margin; drawHeader(); }
+  function checkSpace(needed){ if (y + needed > pageHeight - margin) newPage(); }
+
+  function drawHeader(){
+    if (COMPANY.logoDataUrl){
       try {
-        let bytes;
-        if (att.storagePath && sbClient){
-          const { data, error } = await sbClient.storage.from(ATTACHMENTS_BUCKET).download(att.storagePath);
-          if (error) throw error;
-          bytes = await data.arrayBuffer();
-        } else if (att.fileDataUrl){
-          bytes = await (await fetch(att.fileDataUrl)).arrayBuffer();
-        } else {
-          continue; // file unavailable in this browser/session — skip rather than fail the whole export
-        }
-        const donorPdf = await PDFDocument.load(bytes);
-        const copiedPages = await mergedPdf.copyPages(donorPdf, donorPdf.getPageIndices());
-        copiedPages.forEach(pg => mergedPdf.addPage(pg));
-      } catch (e){
-        console.error(`Could not merge attachment "${att.name}":`, e);
-      }
+        const fmt = COMPANY.logoDataUrl.indexOf('image/png') > -1 ? 'PNG' : 'JPEG';
+        doc.addImage(COMPANY.logoDataUrl, fmt, pageWidth/2 - 65, y, 130, 42, undefined, 'FAST');
+        y += 50;
+      } catch (e) {}
+    } else {
+      doc.setFont(FONT,'bold'); doc.setFontSize(15); doc.setTextColor(INK[0],INK[1],INK[2]);
+      doc.text(COMPANY.name, pageWidth/2, y, {align:'center'}); y += 16;
+    }
+    if (COMPANY.tagline){
+      doc.setFont(FONT,'italic'); doc.setFontSize(9.5); doc.setTextColor(INK[0],INK[1],INK[2]);
+      doc.text(COMPANY.tagline, pageWidth/2, y, {align:'center'}); y += 13;
+    }
+    doc.setDrawColor(ACCENT[0],ACCENT[1],ACCENT[2]); doc.setLineWidth(1.1);
+    doc.line(margin, y+8, pageWidth-margin, y+8); y += 30;
+  }
+
+  drawHeader();
+  doc.setFont(FONT,'bold'); doc.setFontSize(13); doc.setTextColor(INK[0],INK[1],INK[2]);
+  doc.text('PRELIMINARY COST ANALYSIS', pageWidth/2, y, {align:'center'}); y += 26;
+
+  doc.setFontSize(9.5);
+  const infoRow = (label, value, x) => { doc.setFont(FONT,'bold'); doc.text(label, x, y); doc.setFont(FONT,'normal'); doc.text(String(value||'—'), x+82, y); };
+  infoRow('Project:', p.name || 'Untitled Project', leftColX);
+  infoRow('Date:', dateStr, rightColX);
+  y += 18;
+  infoRow('Address:', p.address || '—', leftColX);
+  infoRow('SQFT:', (Number(p.sqft)||0).toLocaleString(), rightColX);
+  y += 18;
+  infoRow('Beds / Baths:', `${p.bed||0} / ${p.bath||0}`, leftColX);
+  infoRow('Price / SQFT:', calc.sqft>0 ? fmtMoney2(calc.grandBuilder/calc.sqft) : '—', rightColX);
+  y += 30;
+
+  const itemsByCategory = {};
+  proj.items.forEach(it => { (itemsByCategory[it.category] = itemsByCategory[it.category] || []).push(it); });
+  const presentCats = CATEGORY_ORDER.filter(c => itemsByCategory[c] && itemsByCategory[c].length);
+  Object.keys(itemsByCategory).forEach(c => { if (!presentCats.includes(c)) presentCats.push(c); });
+
+  presentCats.forEach(cat => {
+    const items = itemsByCategory[cat];
+    const note = proj.scopeNotes[cat] || '';
+    checkSpace(40);
+    doc.setFont(FONT,'bold'); doc.setFontSize(10.5); doc.setTextColor(INK[0],INK[1],INK[2]);
+    doc.text(cat, leftColX, y); y += 14;
+    doc.setDrawColor(INK[0],INK[1],INK[2]); doc.setLineWidth(0.75);
+    doc.line(leftColX, y-9, pageWidth-margin, y-9);
+
+    if (note){
+      doc.setFont(FONT,'italic'); doc.setFontSize(8.5); doc.setTextColor(120,120,120);
+      const noteLines = doc.splitTextToSize(note, contentWidth);
+      checkSpace(noteLines.length*11+6);
+      doc.text(noteLines, leftColX, y); y += noteLines.length*11+6;
     }
 
-    const mergedBytes = await mergedPdf.save();
-    const blob = new Blob([mergedBytes], { type: 'application/pdf' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = filename;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 4000);
-  } catch (e){
-    console.error('Attachment merge failed, falling back to cost analysis only:', e);
-    doc.save(filename);
+    doc.setFont(FONT,'normal'); doc.setFontSize(9); doc.setTextColor(90,90,90);
+    items.forEach(it => {
+      checkSpace(13);
+      const line = doc.splitTextToSize(`•  ${it.title}`, contentWidth - 10);
+      doc.text(line[0] || '', leftColX + 6, y);
+      y += 12.5;
+    });
+
+    checkSpace(18);
+    doc.setFont(FONT,'bold'); doc.setFontSize(9.5); doc.setTextColor(INK[0],INK[1],INK[2]);
+    doc.text(`Allocated Budget: ${fmtMoney(calc.catTotals[cat] ? calc.catTotals[cat].builder : 0)}`, pageWidth-margin, y, {align:'right'});
+    y += 22;
+  });
+
+  const veLines = proj.items.filter(i => i.veEnabled && i._veDiff !== null && i._veDiff !== undefined);
+  if (veLines.length){
+    checkSpace(30);
+    doc.setFont(FONT,'bold'); doc.setFontSize(10.5); doc.setTextColor(INK[0],INK[1],INK[2]);
+    doc.text('Value Engineering Options Considered', leftColX, y); y += 16;
+    doc.setFont(FONT,'normal'); doc.setFontSize(9); doc.setTextColor(90,90,90);
+    veLines.forEach(it => {
+      checkSpace(13);
+      const diff = it._veDiff;
+      const line = doc.splitTextToSize(`•  ${it.title} — ${it.veAltSpec||'Alternate spec'} (${diff>=0?'saves':'adds'} ${fmtMoney(Math.abs(diff))})`, contentWidth-10);
+      doc.text(line[0] || '', leftColX+6, y);
+      y += 12.5;
+    });
+    y += 10;
   }
+
+  checkSpace(40);
+  doc.setDrawColor(INK[0],INK[1],INK[2]); doc.setLineWidth(1.2);
+  doc.line(margin, y, pageWidth-margin, y); y += 20;
+  doc.setFont(FONT,'bold'); doc.setFontSize(12);
+  doc.text('TOTAL ESTIMATED COST', leftColX, y);
+  doc.text(fmtMoney(calc.grandBuilder), pageWidth-margin, y, {align:'right'});
+  y += 26;
+
+  doc.setFont(FONT,'italic'); doc.setFontSize(8); doc.setTextColor(140,135,125);
+  const disclaimer = 'This is a preliminary cost analysis based on current scope and selections. Final pricing is subject to change pending finalized plans, engineering, permitting, and material selections.';
+  const dLines = doc.splitTextToSize(disclaimer, contentWidth);
+  checkSpace(dLines.length*10+10);
+  doc.text(dLines, leftColX, y);
+
+  const pageCount = doc.internal.getNumberOfPages();
+  const footerContact = [COMPANY.address, COMPANY.phone, COMPANY.website].filter(Boolean).join('   |   ');
+  for (let i = 1; i <= pageCount; i++){
+    doc.setPage(i);
+    if (footerContact){
+      doc.setFont(FONT,'normal'); doc.setFontSize(8); doc.setTextColor(120,120,120);
+      doc.text(footerContact, pageWidth/2, pageHeight - 34, {align:'center'});
+    }
+    doc.setFont(FONT,'normal'); doc.setFontSize(7.5); doc.setTextColor(160,160,160);
+    doc.text(`Page ${i} of ${pageCount}  —  Generated ${dateStr}`, pageWidth/2, pageHeight - 22, {align:'center'});
+  }
+  return doc;
+}
+
+// ---------- Interest Calculator PDF ----------
+async function buildInterestCalculatorPdfDoc(proj){
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+  const fin = computeFinancing(proj);
+  const p = proj.project;
+  const margin = 50;
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const contentWidth = pageWidth - margin*2;
+  let y = margin;
+
+  const FONT = pdfFontFor();
+  const ACCENT = hexToRgb(COMPANY.accentColor);
+  const INK = hexToRgb(COMPANY.inkColor);
+  const dateStr = new Date().toLocaleDateString('en-US', {year:'numeric', month:'long', day:'numeric'});
+  const leftColX = margin;
+
+  function newPage(){ doc.addPage(); y = margin; drawLightHeader(); }
+  function checkSpace(needed){ if (y + needed > pageHeight - margin) newPage(); }
+
+  function drawLightHeader(){
+    doc.setFont(FONT,'bold'); doc.setFontSize(10); doc.setTextColor(INK[0],INK[1],INK[2]);
+    doc.text(COMPANY.name, leftColX, y);
+    doc.setFont(FONT,'normal'); doc.setFontSize(8); doc.setTextColor(140,135,125);
+    doc.text('Construction Loan Interest Estimate', pageWidth-margin, y, {align:'right'});
+    y += 10;
+    doc.setDrawColor(ACCENT[0],ACCENT[1],ACCENT[2]); doc.setLineWidth(0.9);
+    doc.line(margin, y, pageWidth-margin, y); y += 22;
+  }
+
+  doc.setFont(FONT,'bold'); doc.setFontSize(15); doc.setTextColor(INK[0],INK[1],INK[2]);
+  doc.text(COMPANY.name, pageWidth/2, y, {align:'center'}); y += 16;
+  if (COMPANY.tagline){
+    doc.setFont(FONT,'italic'); doc.setFontSize(9.5);
+    doc.text(COMPANY.tagline, pageWidth/2, y, {align:'center'}); y += 13;
+  }
+  doc.setDrawColor(ACCENT[0],ACCENT[1],ACCENT[2]); doc.setLineWidth(1.1);
+  doc.line(margin, y+8, pageWidth-margin, y+8); y += 30;
+
+  doc.setFont(FONT,'bold'); doc.setFontSize(13); doc.setTextColor(INK[0],INK[1],INK[2]);
+  doc.text('CONSTRUCTION LOAN INTEREST ESTIMATE', pageWidth/2, y, {align:'center'}); y += 15;
+  doc.setFont(FONT,'normal'); doc.setFontSize(8.5); doc.setTextColor(120,120,120);
+  doc.text(`Project: ${p.name || 'Untitled Project'}`, pageWidth/2, y, {align:'center'}); y += 26;
+
+  if (!fin.loanAmount || !fin.ratePct){
+    doc.setFont(FONT,'italic'); doc.setFontSize(10); doc.setTextColor(140,135,125);
+    doc.text('No loan amount or interest rate entered for this project.', leftColX, y);
+    return doc;
+  }
+
+  // Summary box
+  doc.setFillColor(247,246,243);
+  const boxH = 78;
+  doc.roundedRect(margin, y, contentWidth, boxH, 7, 7, 'F');
+  doc.setDrawColor(230,226,218); doc.roundedRect(margin, y, contentWidth, boxH, 7, 7, 'S');
+  const colW = contentWidth/4;
+  const cell = (label, value, colIdx) => {
+    const x = margin + 14 + colIdx*colW;
+    doc.setFont(FONT,'normal'); doc.setFontSize(7.2); doc.setTextColor(140,135,125);
+    doc.text(label.toUpperCase(), x, y+22);
+    doc.setFont(FONT,'bold'); doc.setFontSize(12.5); doc.setTextColor(INK[0],INK[1],INK[2]);
+    const lines = doc.splitTextToSize(value, colW-16);
+    doc.text(lines, x, y+38);
+  };
+  cell('Construction Interest', fmtMoney(fin.constructionInterest), 0);
+  cell('Hold Interest', fmtMoney(fin.holdInterest), 1);
+  cell('Origination Fee', fmtMoney(fin.originationFee), 2);
+  cell('Total Financing Cost', fmtMoney(fin.totalFinancingCost), 3);
+  y += boxH + 22;
+
+  doc.setFont(FONT,'normal'); doc.setFontSize(9.5); doc.setTextColor(90,90,90);
+  const loanLine = `Loan Amount: ${fmtMoney(fin.loanAmount)}   •   Rate: ${fin.ratePct}%   •   Construction: ${fin.constructionMonths} mo   •   Hold: ${fin.holdMonths} mo   •   Origination: ${fin.originationPct || 0}%`;
+  const loanLines = doc.splitTextToSize(loanLine, contentWidth);
+  doc.text(loanLines, leftColX, y);
+  y += loanLines.length*12 + 16;
+
+  if (fin.schedule.length){
+    checkSpace(40);
+    doc.setFont(FONT,'bold'); doc.setFontSize(10.5); doc.setTextColor(INK[0],INK[1],INK[2]);
+    doc.text('Month-by-Month Schedule', leftColX, y); y += 16;
+
+    const c = { month: leftColX, phase: leftColX+55, bal: leftColX+230, int: leftColX+330, cum: pageWidth-margin };
+    doc.setFillColor(26,26,26); doc.rect(margin, y-11, contentWidth, 16, 'F');
+    doc.setTextColor(255,255,255); doc.setFont(FONT,'bold'); doc.setFontSize(7.5);
+    doc.text('MO', c.month+3, y);
+    doc.text('PHASE', c.phase, y);
+    doc.text('EST. BALANCE', c.bal, y, {align:'right'});
+    doc.text('INTEREST', c.int, y, {align:'right'});
+    doc.text('CUMULATIVE', c.cum, y, {align:'right'});
+    y += 15;
+    doc.setTextColor(INK[0],INK[1],INK[2]);
+
+    fin.schedule.forEach((row, i) => {
+      checkSpace(13);
+      if (i % 2 === 1){ doc.setFillColor(247,246,243); doc.rect(margin, y-9, contentWidth, 13, 'F'); }
+      doc.setFont(FONT,'normal'); doc.setFontSize(8);
+      doc.text(String(row.month), c.month+3, y);
+      doc.text(row.phase, c.phase, y);
+      doc.text(fmtMoney(row.balance), c.bal, y, {align:'right'});
+      doc.text(fmtMoney(row.interest), c.int, y, {align:'right'});
+      doc.text(fmtMoney(row.cumulative), c.cum, y, {align:'right'});
+      y += 13;
+    });
+  }
+
+  const pageCount = doc.internal.getNumberOfPages();
+  const footerContact = [COMPANY.address, COMPANY.phone, COMPANY.website].filter(Boolean).join('   |   ');
+  for (let i = 1; i <= pageCount; i++){
+    doc.setPage(i);
+    if (footerContact){
+      doc.setFont(FONT,'normal'); doc.setFontSize(8); doc.setTextColor(120,120,120);
+      doc.text(footerContact, pageWidth/2, pageHeight - 34, {align:'center'});
+    }
+    doc.setFont(FONT,'normal'); doc.setFontSize(7.5); doc.setTextColor(160,160,160);
+    doc.text(`Page ${i} of ${pageCount}  —  Generated ${dateStr}`, pageWidth/2, pageHeight - 22, {align:'center'});
+  }
+  return doc;
+}
+
+// ---------- Combined "Print / Export Report" package ----------
+async function openExportPackageModal(){
+  const proj = current();
+  if (!proj) return;
+  const attachments = await getMergeableAttachments(proj);
+
+  const root = document.getElementById('modalRoot');
+  root.innerHTML = `
+    <div class="modal-overlay" id="modalOverlay">
+      <div class="modal modal-lg">
+        <h3>Export Package</h3>
+        <p style="font-size:12px; color:var(--gray); margin:-8px 0 14px;">Choose what to include — everything selected exports as one combined PDF.</p>
+        <div class="modal-scroll-body">
+          <div class="field" style="margin-bottom:6px;">
+            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; text-transform:none; font-weight:600; color:var(--ink); font-size:13.5px;">
+              <input type="checkbox" id="pkgIncludeBank" checked style="width:auto;"> Bank / Lender Package
+            </label>
+          </div>
+          <div class="field" style="margin-bottom:6px;">
+            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; text-transform:none; font-weight:600; color:var(--ink); font-size:13.5px;">
+              <input type="checkbox" id="pkgIncludeCostAnalysis" checked style="width:auto;"> Cost Analysis Report
+            </label>
+          </div>
+          <div class="field" style="margin-bottom:16px;">
+            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; text-transform:none; font-weight:600; color:var(--ink); font-size:13.5px;">
+              <input type="checkbox" id="pkgIncludeInterest" checked style="width:auto;"> Interest Calculator
+            </label>
+          </div>
+
+          <div style="padding-top:14px; border-top:1px solid var(--border);">
+            <label style="text-transform:uppercase; font-size:10.5px; font-weight:600; color:var(--gray); letter-spacing:0.05em; display:block; margin-bottom:10px;">Comps &amp; Lots to Include</label>
+            ${attachments.length ? attachments.map(att => `
+              <label style="display:flex; align-items:center; gap:8px; cursor:pointer; text-transform:none; font-weight:500; color:var(--ink); font-size:13px; margin-bottom:8px;">
+                <input type="checkbox" class="pkg-att-checkbox" value="${att.id}" ${att.includeInBankPdf ? 'checked' : ''} style="width:auto;">
+                ${escapeAttr(att.name)} <span style="color:var(--gray); font-size:11.5px;">(${att.category === 'lot' ? 'Lot' : 'Comp'}${att.neighborhood ? ' — ' + escapeAttr(att.neighborhood) : ''})</span>
+              </label>
+            `).join('') : `<p style="font-size:12px; color:var(--gray-light); font-style:italic;">No comps or lots with an attached PDF yet.</p>`}
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button class="btn" id="modalCancel">Cancel</button>
+          <button class="btn btn-gold" id="btnRunExportPackage">Export Package</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('modalCancel').addEventListener('click', closeModal);
+  document.getElementById('modalOverlay').addEventListener('click', (e) => { if (e.target.id === 'modalOverlay') closeModal(); });
+  document.getElementById('btnRunExportPackage').addEventListener('click', async () => {
+    const btn = document.getElementById('btnRunExportPackage');
+    btn.disabled = true; btn.textContent = 'Building...';
+
+    const includeBank = document.getElementById('pkgIncludeBank').checked;
+    const includeCostAnalysis = document.getElementById('pkgIncludeCostAnalysis').checked;
+    const includeInterest = document.getElementById('pkgIncludeInterest').checked;
+    const selectedIds = new Set(Array.from(document.querySelectorAll('.pkg-att-checkbox:checked')).map(cb => cb.value));
+
+    try {
+      const docs = [];
+      if (includeBank) docs.push(await buildBankPdfDoc(proj));
+      if (includeCostAnalysis) docs.push(await buildCostAnalysisPdfDoc(proj));
+      if (includeInterest) docs.push(await buildInterestCalculatorPdfDoc(proj));
+
+      if (!docs.length && !selectedIds.size){
+        alert('Select at least one section or comp/lot to export.');
+        btn.disabled = false; btn.textContent = 'Export Package';
+        return;
+      }
+
+      const selectedAttachments = attachments.filter(a => selectedIds.has(String(a.id)));
+      const safeName = (proj.project.name || 'mcd-estimate').replace(/[^a-z0-9\-_]+/gi,'_');
+      await mergeAndDownload(docs, selectedAttachments, `${safeName}_Export_Package.pdf`);
+      closeModal();
+    } catch (e){
+      alert('Could not build the export package: ' + e.message);
+      btn.disabled = false; btn.textContent = 'Export Package';
+    }
+  });
 }
 
 // ---------- Company Settings view ----------
