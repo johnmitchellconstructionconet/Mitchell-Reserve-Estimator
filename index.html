@@ -3633,9 +3633,15 @@ async function renderAttachments(){
   };
 
   const attRowHtml = (att, nested) => {
-    const linkIcon = att.link
-      ? `<svg width="19" height="19" viewBox="0 0 16 16" fill="none"><path d="M6.5 9.5 9.5 6.5M6 4.5 4.2 6.3a2.5 2.5 0 0 0 3.5 3.5L9.5 8M10 11.5l1.8-1.8a2.5 2.5 0 0 0-3.5-3.5L6.5 8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>`
-      : `<svg width="19" height="19" viewBox="0 0 16 16" fill="none"><path d="M3.5 1.5h6l3 3v10a1 1 0 0 1-1 1h-8a1 1 0 0 1-1-1v-12a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.3"/><path d="M9 1.5v3h3" stroke="currentColor" stroke-width="1.3"/></svg>`;
+    // Category is the primary visual now — a house for comps, a land plot for lots — since that's
+    // what you actually need to tell apart at a glance. A small chain-link badge overlays the
+    // corner when the entry is a link instead of an uploaded PDF.
+    const categoryIcon = att.category === 'lot'
+      ? `<svg width="19" height="19" viewBox="0 0 16 16" fill="none"><rect x="2.5" y="2.5" width="11" height="11" rx="0.5" stroke="currentColor" stroke-width="1.2" stroke-dasharray="2.1 2"/><path d="M2.5 2.5v2M2.5 2.5h2M13.5 2.5v2M13.5 2.5h-2M2.5 13.5v-2M2.5 13.5h2M13.5 13.5v-2M13.5 13.5h-2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>`
+      : `<svg width="19" height="19" viewBox="0 0 16 16" fill="none"><path d="M2 8.5 8 3l6 5.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M3.5 7.3V13a.5.5 0 0 0 .5.5h8a.5.5 0 0 0 .5-.5V7.3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M6.5 13.5V10a1 1 0 0 1 1-1h1a1 1 0 0 1 1 1v3.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+    const linkBadge = att.link
+      ? `<span style="position:absolute; bottom:-3px; right:-3px; width:15px; height:15px; border-radius:50%; background:var(--white); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; color:var(--gold-deep);"><svg width="8" height="8" viewBox="0 0 16 16" fill="none"><path d="M6.5 9.5 9.5 6.5M6 4.5 4.2 6.3a2.5 2.5 0 0 0 3.5 3.5L9.5 8M10 11.5l1.8-1.8a2.5 2.5 0 0 0-3.5-3.5L6.5 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span>`
+      : '';
     const metaBits = [];
     if (att.notes) metaBits.push(escapeAttr(att.notes));
     if (att.link) metaBits.push('Link'); else metaBits.push(fmtBytes(att.sizeBytes));
@@ -3660,7 +3666,7 @@ async function renderAttachments(){
           <input type="checkbox" ${att.includeInBankPdf ? 'checked' : ''} data-att-include="${att.id}">
           Bank PDF
         </label>
-        <div class="att-icon" data-att-open-details="${att.id}" style="cursor:pointer;">${linkIcon}</div>
+        <div class="att-icon" data-att-open-details="${att.id}" style="cursor:pointer; position:relative; overflow:visible;">${categoryIcon}${linkBadge}</div>
         <div class="att-info" data-att-open-details="${att.id}" style="cursor:pointer;">
           <div class="att-name">${escapeAttr(att.name)}</div>
           <div class="att-meta">${metaBits.join(' · ')}</div>
