@@ -3802,7 +3802,16 @@ async function openCompareModal(){
   root.innerHTML = `
     <div class="modal-overlay" id="modalOverlay">
       <div class="modal" style="width:95vw; max-width:1600px; height:90vh; max-height:90vh; display:flex; flex-direction:column;">
-        <h3 style="flex-shrink:0;">Compare ${items.length} PDFs</h3>
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:16px; flex-shrink:0;">
+          <h3 style="margin:0;">Compare ${items.length} PDFs</h3>
+          <div style="display:flex; align-items:center; gap:6px;">
+            <span style="font-size:11.5px; color:var(--gray); margin-right:4px;">Zoom all:</span>
+            <button class="btn btn-sm" id="btnCompareZoomOut" type="button">&minus;</button>
+            <span id="compareZoomLabel" style="font-size:12.5px; font-weight:700; color:var(--ink); width:44px; text-align:center;">100%</span>
+            <button class="btn btn-sm" id="btnCompareZoomIn" type="button">+</button>
+            <button class="btn btn-sm" id="btnCompareZoomReset" type="button">Reset</button>
+          </div>
+        </div>
         <div id="compareGridWrap" style="flex:1; min-height:0; margin-top:10px; display:flex; gap:12px; overflow-x:auto;">
           ${items.map(a => `<div style="flex:1; min-width:280px; display:flex; align-items:center; justify-content:center; color:var(--gray); font-size:12.5px;">Loading ${escapeAttr(a.name)}...</div>`).join('')}
         </div>
@@ -3820,37 +3829,57 @@ async function openCompareModal(){
   const wrap = document.getElementById('compareGridWrap');
   if (!wrap) return; // modal was closed before the URLs finished loading
 
-  // Hides the browser's PDF viewer toolbar/side panels and forces it to fit the page to the width
-  // of its column, so nothing needs manual zooming or a page-thumbnail sidebar to look right.
+  let zoomPct = 100;
+
+  // Hides the browser's PDF viewer toolbar/side panels — one shared zoom control above drives all
+  // panels together instead — and passes the current zoom level through as a native PDF-viewer
+  // parameter so the viewer itself handles reflow/scrolling and nothing gets visually clipped.
   const withPdfViewerParams = (url) => {
     if (!url) return url;
-    const params = 'toolbar=0&navpanes=0&scrollbar=0&statusbar=0&view=FitH&zoom=page-width';
+    const params = `toolbar=0&navpanes=0&scrollbar=1&statusbar=0&view=FitH&zoom=${zoomPct}`;
     return url.includes('#') ? `${url}&${params}` : `${url}#${params}`;
   };
 
-  wrap.innerHTML = items.map((a, i) => {
-    const url = urls[i];
-    return `
-      <div style="flex:1; min-width:280px; display:flex; flex-direction:column; border:1px solid var(--border); border-radius:10px; overflow:hidden;">
-        <div style="padding:10px 12px; background:var(--bg); border-bottom:1px solid var(--border); font-size:12.5px; font-weight:700; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
-          ${escapeAttr(a.name)}
+  const renderPanels = () => {
+    document.getElementById('compareZoomLabel').textContent = `${zoomPct}%`;
+    wrap.innerHTML = items.map((a, i) => {
+      const url = urls[i];
+      return `
+        <div style="flex:1; min-width:280px; display:flex; flex-direction:column; border:1px solid var(--border); border-radius:10px; overflow:hidden;">
+          <div style="padding:10px 12px; background:var(--bg); border-bottom:1px solid var(--border); font-size:12.5px; font-weight:700; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+            ${escapeAttr(a.name)}
+          </div>
+          ${url
+            ? `<iframe src="${withPdfViewerParams(url)}" style="flex:1; border:none; width:100%;"></iframe>`
+            : `<div style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; color:var(--gray); font-size:12.5px; padding:20px; text-align:center;">
+                 ${a.link ? 'This is a link, not a PDF — open it directly instead.' : 'No PDF available to preview.'}
+                 ${a.link ? `<button class="btn btn-sm" data-compare-open-link="${a.id}">Open Link</button>` : ''}
+               </div>`}
         </div>
-        ${url
-          ? `<iframe src="${withPdfViewerParams(url)}" style="flex:1; border:none; width:100%;"></iframe>`
-          : `<div style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; color:var(--gray); font-size:12.5px; padding:20px; text-align:center;">
-               ${a.link ? 'This is a link, not a PDF — open it directly instead.' : 'No PDF available to preview.'}
-               ${a.link ? `<button class="btn btn-sm" data-compare-open-link="${a.id}">Open Link</button>` : ''}
-             </div>`}
-      </div>
-    `;
-  }).join('');
-
-  wrap.querySelectorAll('[data-compare-open-link]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const att = items.find(a => String(a.id) === String(btn.dataset.compareOpenLink));
-      if (att) viewAttachment(att);
+      `;
+    }).join('');
+    wrap.querySelectorAll('[data-compare-open-link]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const att = items.find(a => String(a.id) === String(btn.dataset.compareOpenLink));
+        if (att) viewAttachment(att);
+      });
     });
+  };
+
+  document.getElementById('btnCompareZoomOut').addEventListener('click', () => {
+    zoomPct = Math.max(50, zoomPct - 25);
+    renderPanels();
   });
+  document.getElementById('btnCompareZoomIn').addEventListener('click', () => {
+    zoomPct = Math.min(300, zoomPct + 25);
+    renderPanels();
+  });
+  document.getElementById('btnCompareZoomReset').addEventListener('click', () => {
+    zoomPct = 100;
+    renderPanels();
+  });
+
+  renderPanels();
 }
 
 // Add Comp or Lot — now a modal instead of a permanent block taking up page space. Stays open after
