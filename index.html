@@ -3831,12 +3831,14 @@ async function openCompareModal(){
 
   let zoomPct = 100;
 
-  // Hides the browser's PDF viewer toolbar/side panels — one shared zoom control above drives all
-  // panels together instead — and passes the current zoom level through as a native PDF-viewer
-  // parameter so the viewer itself handles reflow/scrolling and nothing gets visually clipped.
+  // Don't rely on the PDF viewer understanding a "#zoom=" URL parameter at all (support for that
+  // varies a lot by browser and clearly wasn't working here) — instead, physically resize the
+  // iframe itself inside a scrollable wrapper. A bigger iframe with the same PDF just renders that
+  // PDF bigger, which is guaranteed to work the same everywhere, and the wrapper's own scrollbars
+  // mean nothing gets clipped even at high zoom.
   const withPdfViewerParams = (url) => {
     if (!url) return url;
-    const params = `toolbar=0&navpanes=0&scrollbar=1&statusbar=0&view=FitH&zoom=${zoomPct}`;
+    const params = 'toolbar=0&navpanes=0&statusbar=0';
     return url.includes('#') ? `${url}&${params}` : `${url}#${params}`;
   };
 
@@ -3846,11 +3848,11 @@ async function openCompareModal(){
       const url = urls[i];
       return `
         <div style="flex:1; min-width:280px; display:flex; flex-direction:column; border:1px solid var(--border); border-radius:10px; overflow:hidden;">
-          <div style="padding:10px 12px; background:var(--bg); border-bottom:1px solid var(--border); font-size:12.5px; font-weight:700; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+          <div style="padding:10px 12px; background:var(--bg); border-bottom:1px solid var(--border); font-size:12.5px; font-weight:700; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex-shrink:0;">
             ${escapeAttr(a.name)}
           </div>
           ${url
-            ? `<iframe src="${withPdfViewerParams(url)}" style="flex:1; border:none; width:100%;"></iframe>`
+            ? `<div class="compare-pdf-viewport" style="flex:1; min-height:0; overflow:auto; position:relative;"><iframe class="compare-pdf-iframe" src="${withPdfViewerParams(url)}" style="border:none; display:block;"></iframe></div>`
             : `<div style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; color:var(--gray); font-size:12.5px; padding:20px; text-align:center;">
                  ${a.link ? 'This is a link, not a PDF — open it directly instead.' : 'No PDF available to preview.'}
                  ${a.link ? `<button class="btn btn-sm" data-compare-open-link="${a.id}">Open Link</button>` : ''}
@@ -3858,6 +3860,19 @@ async function openCompareModal(){
         </div>
       `;
     }).join('');
+
+    // Size each iframe to (viewport size × zoom) in real pixels, only after it's in the DOM (so the
+    // viewport actually has a measurable size to compute from).
+    const factor = zoomPct / 100;
+    wrap.querySelectorAll('.compare-pdf-viewport').forEach(viewport => {
+      const iframe = viewport.querySelector('iframe');
+      if (!iframe) return;
+      const baseW = viewport.clientWidth || 280;
+      const baseH = viewport.clientHeight || 400;
+      iframe.style.width = Math.round(baseW * factor) + 'px';
+      iframe.style.height = Math.round(baseH * factor) + 'px';
+    });
+
     wrap.querySelectorAll('[data-compare-open-link]').forEach(btn => {
       btn.addEventListener('click', () => {
         const att = items.find(a => String(a.id) === String(btn.dataset.compareOpenLink));
