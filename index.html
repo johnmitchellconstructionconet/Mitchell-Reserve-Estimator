@@ -727,8 +727,11 @@ tr.subtotal-row td{
         </select>
       </div>
       <div class="field"><label>Neighborhood / Subdivision</label>
-        <input id="attNeighborhood" type="text" list="neighborhoodSuggestions" placeholder="e.g. Ridgeline Estates">
-        <datalist id="neighborhoodSuggestions"></datalist>
+        <select id="attNeighborhoodSelect">
+          <option value="">— Select or add new —</option>
+          <option value="__new__">+ Add New Neighborhood...</option>
+        </select>
+        <input id="attNeighborhoodNew" type="text" class="hidden" placeholder="New neighborhood name" style="margin-top:8px;">
       </div>
       <div class="field"><label>Name / Address</label><input id="attName" type="text" placeholder="e.g. 412 Ridgeline Dr — Sold $712k"></div>
       <div class="field"><label>Notes</label><input id="attNotes" type="text" placeholder="Optional — sqft, sale date, asking price, etc."></div>
@@ -2843,12 +2846,37 @@ const ATTACHMENTS_TABLE = 'project_attachments';
 const MAX_LOCAL_ATTACHMENT_BYTES = 2 * 1024 * 1024; // 2MB cap when Supabase Storage isn't available
 let attachmentsCache = [];      // normalized, in-memory list backing whatever's currently rendered
 let attachmentsSharedMode = false; // true when this render pulled from the shared Supabase table
+let knownNeighborhoods = [];    // every distinct neighborhood name used so far on this project
+
+// Builds the <option> list for a neighborhood dropdown — every neighborhood used on this project so
+// far, plus "Add New" at the end. If selectedValue isn't already in the known list (e.g. an older
+// entry saved before this became a dropdown), it's added in so nothing ever looks unset by accident.
+function buildNeighborhoodOptionsHtml(selectedValue){
+  const sel = (selectedValue || '').trim();
+  const names = [...knownNeighborhoods];
+  if (sel && !names.includes(sel)) names.push(sel);
+  names.sort((a, b) => a.localeCompare(b));
+  let html = `<option value="" ${!sel ? 'selected' : ''}>— Select or add new —</option>`;
+  html += names.map(n => `<option value="${escapeAttr(n)}" ${n === sel ? 'selected' : ''}>${escapeAttr(n)}</option>`).join('');
+  html += `<option value="__new__">+ Add New Neighborhood...</option>`;
+  return html;
+}
 
 function fmtBytes(n){
   if (!n && n !== 0) return '';
   if (n < 1024) return n + ' B';
   if (n < 1024*1024) return (n/1024).toFixed(0) + ' KB';
   return (n/1024/1024).toFixed(1) + ' MB';
+}
+
+function getResolvedNeighborhood(selectId, newInputId){
+  const select = document.getElementById(selectId);
+  if (!select) return '';
+  if (select.value === '__new__'){
+    const newInput = document.getElementById(newInputId);
+    return newInput ? newInput.value.trim() : '';
+  }
+  return select.value.trim();
 }
 
 function projectNameKey(proj){
@@ -2936,7 +2964,7 @@ async function uploadAttachment(file){
   if (!proj || !file) return;
 
   const category = document.getElementById('attCategory').value;
-  const neighborhood = document.getElementById('attNeighborhood').value.trim();
+  const neighborhood = getResolvedNeighborhood('attNeighborhoodSelect', 'attNeighborhoodNew');
   const name = document.getElementById('attName').value.trim() || file.name;
   const notes = document.getElementById('attNotes').value.trim();
   const nameKey = projectNameKey(proj);
@@ -2982,7 +3010,7 @@ async function addAttachmentLink(){
   if (!/^https?:\/\//i.test(link)){ alert('Links should start with http:// or https://'); return; }
 
   const category = document.getElementById('attCategory').value;
-  const neighborhood = document.getElementById('attNeighborhood').value.trim();
+  const neighborhood = getResolvedNeighborhood('attNeighborhoodSelect', 'attNeighborhoodNew');
   const name = document.getElementById('attName').value.trim() || link;
   const notes = document.getElementById('attNotes').value.trim();
   const nameKey = projectNameKey(proj);
@@ -3079,7 +3107,8 @@ function openEditAttachmentModal(id){
         </div>
         <div class="field" style="margin-bottom:12px;">
           <label>Neighborhood / Subdivision</label>
-          <input id="editAttNeighborhood" type="text" list="neighborhoodSuggestions" value="${escapeAttr(att.neighborhood || '')}" placeholder="e.g. Ridgeline Estates">
+          <select id="editAttNeighborhoodSelect">${buildNeighborhoodOptionsHtml(att.neighborhood)}</select>
+          <input id="editAttNeighborhoodNew" type="text" class="hidden" value="${escapeAttr(att.neighborhood || '')}" placeholder="New neighborhood name" style="margin-top:8px;">
         </div>
         <div class="field" style="margin-bottom:12px;">
           <label>Name / Address</label>
@@ -3185,6 +3214,16 @@ function openEditAttachmentModal(id){
     const removeBtn = e.target.closest('[data-doc-remove]');
     if (removeBtn){ removeSupportingDocument(id, removeBtn.dataset.docRemove); }
   });
+  document.getElementById('editAttNeighborhoodSelect').addEventListener('change', e => {
+    const newInput = document.getElementById('editAttNeighborhoodNew');
+    if (e.target.value === '__new__'){
+      newInput.classList.remove('hidden');
+      newInput.value = '';
+      newInput.focus();
+    } else {
+      newInput.classList.add('hidden');
+    }
+  });
   document.getElementById('btnChooseEditAttFile').addEventListener('click', () => document.getElementById('editAttFileInput').click());
   document.getElementById('editAttFileInput').addEventListener('change', e => {
     const file = e.target.files[0];
@@ -3230,7 +3269,7 @@ async function saveAttachmentEdits(id, getReplacementFile){
 
   const updates = {
     category: document.getElementById('editAttCategory').value,
-    neighborhood: document.getElementById('editAttNeighborhood').value.trim(),
+    neighborhood: getResolvedNeighborhood('editAttNeighborhoodSelect', 'editAttNeighborhoodNew'),
     name: document.getElementById('editAttName').value.trim() || att.name,
     notes: document.getElementById('editAttNotes').value.trim(),
     link: document.getElementById('editAttLink').value.trim()
@@ -3447,10 +3486,19 @@ async function renderAttachments(){
 
   updateAttStorageStatus(nameKey);
 
-  // Keep the neighborhood autocomplete list current, based on whatever's already been used on this project.
-  const neighborhoodNames = [...new Set(attachmentsCache.map(a => (a.neighborhood || '').trim()).filter(Boolean))].sort();
-  const datalist = document.getElementById('neighborhoodSuggestions');
-  if (datalist) datalist.innerHTML = neighborhoodNames.map(n => `<option value="${escapeAttr(n)}">`).join('');
+  // Keep the known-neighborhoods list current, based on whatever's already been used on this project,
+  // and refresh the "Add a Comp or Lot" dropdown so previously typed neighborhoods can just be selected.
+  // If the form was in the middle of "+ Add New" with a typed name, that name is now a real known
+  // neighborhood (it was just used), so re-select it as a normal option and hide the free-text field —
+  // ready to add the next item to the same neighborhood without retyping anything.
+  knownNeighborhoods = [...new Set(attachmentsCache.map(a => (a.neighborhood || '').trim()).filter(Boolean))].sort();
+  const addFormSelect = document.getElementById('attNeighborhoodSelect');
+  if (addFormSelect){
+    const resolvedPrev = getResolvedNeighborhood('attNeighborhoodSelect', 'attNeighborhoodNew');
+    addFormSelect.innerHTML = buildNeighborhoodOptionsHtml(resolvedPrev);
+    const newInput = document.getElementById('attNeighborhoodNew');
+    if (newInput) newInput.classList.add('hidden');
+  }
 
   const statusSegmented = (att) => {
     const s = att.status || 'review';
@@ -3552,6 +3600,17 @@ async function renderAttachments(){
 }
 
 function attachCompsEvents(){
+  document.getElementById('attNeighborhoodSelect').addEventListener('change', e => {
+    const newInput = document.getElementById('attNeighborhoodNew');
+    if (e.target.value === '__new__'){
+      newInput.classList.remove('hidden');
+      newInput.value = '';
+      newInput.focus();
+    } else {
+      newInput.classList.add('hidden');
+      newInput.value = '';
+    }
+  });
   document.getElementById('btnChooseAttFile').addEventListener('click', () => document.getElementById('attFileInput').click());
   document.getElementById('attFileInput').addEventListener('change', e => {
     const file = e.target.files[0];
