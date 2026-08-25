@@ -157,10 +157,9 @@ h1,h2,h3,h4{font-family:var(--app-font); font-weight:700; letter-spacing:-0.01em
 .spec-chip.off{background:var(--attn-bg); color:var(--attn-text);}
 .att-compare-toggle{display:flex; align-items:center; gap:5px; flex-shrink:0; font-size:10px; color:var(--gray-light); cursor:pointer; white-space:nowrap;}
 
-/* Comps linked to a lot, shown inside a lot's row */
-.linked-comps-strip{margin-top:8px; padding-left:56px; display:flex; flex-wrap:wrap; gap:6px;}
-.linked-comp-pill{font-size:10.5px; font-weight:600; color:var(--gray); background:var(--bg); border:1px solid var(--border); border-radius:20px; padding:3px 10px; cursor:pointer;}
-.linked-comp-pill:hover{background:var(--active-bg);}
+/* Comps nested under their lot */
+.nested-comps-wrap{margin:2px 0 12px 42px; padding-left:16px; border-left:2px solid var(--border);}
+.nested-comps-wrap .att-row{margin-bottom:8px;}
 
 /* ---------- Neighborhood grouping ---------- */
 .neighborhood-group{background:var(--white); border:1px solid var(--border); border-radius:12px; margin-bottom:16px; overflow:hidden; box-shadow:var(--shadow);}
@@ -728,59 +727,20 @@ tr.subtotal-row td{
     </div>
   </div>
 
-  <div class="panel" style="margin-bottom:20px;">
-    <h2>Add a Comp or Lot</h2>
-    <div class="grid-info">
-      <div class="field"><label>Category</label>
-        <select id="attCategory">
-          <option value="comp">Comp (Comparable Sale)</option>
-          <option value="lot">Potential Lot</option>
-        </select>
-      </div>
-      <div class="field"><label>Neighborhood / Subdivision</label>
-        <select id="attNeighborhoodSelect">
-          <option value="">— Select or add new —</option>
-          <option value="__new__">+ Add New Neighborhood...</option>
-        </select>
-        <input id="attNeighborhoodNew" type="text" class="hidden" placeholder="New neighborhood name" style="margin-top:8px;">
-      </div>
-      <div class="field"><label>Name / Address</label><input id="attName" type="text" placeholder="e.g. 412 Ridgeline Dr — Sold $712k"></div>
-      <div class="field"><label>Notes</label><input id="attNotes" type="text" placeholder="Optional — sale date, condition, etc."></div>
-    </div>
-
-    <div class="grid-info" style="margin-top:16px; padding-top:16px; border-top:1px solid var(--border);">
-      <div class="field"><label>Square Footage</label><input id="attSqft" type="number" min="0" step="1" placeholder="e.g. 2500"></div>
-      <div class="field"><label>Lot Size (acres)</label><input id="attLotSizeAcres" type="number" min="0" step="0.01" placeholder="e.g. 0.35"></div>
-      <div class="field"><label>Sale / Asking Price ($)</label><input id="attSalePrice" type="number" min="0" step="1000" placeholder="e.g. 725000"></div>
-      <div class="field"><label>Bedrooms</label><input id="attBedrooms" type="number" min="0" step="1" placeholder="e.g. 4"></div>
-      <div class="field"><label>Bathrooms</label><input id="attBathrooms" type="number" min="0" step="0.5" placeholder="e.g. 2.5"></div>
-      <div class="field"><label>Garage Bays</label><input id="attGarageBays" type="number" min="0" step="1" placeholder="e.g. 2"></div>
-    </div>
-
-    <div style="margin-top:16px; padding-top:16px; border-top:1px solid var(--border); display:flex; gap:24px; flex-wrap:wrap;">
-      <div style="flex:1; min-width:240px;">
-        <label style="display:block; font-size:10.5px; font-weight:600; color:var(--gray); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:8px;">Attach a PDF</label>
-        <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-          <button class="btn btn-gold" id="btnChooseAttFile">Choose PDF File</button>
-          <input type="file" id="attFileInput" class="file-input" accept="application/pdf">
-          <span id="attChosenFileName" style="font-size:12.5px; color:var(--gray);"></span>
-        </div>
-      </div>
-      <div style="flex:1; min-width:240px;">
-        <label style="display:block; font-size:10.5px; font-weight:600; color:var(--gray); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:8px;">Or Paste a Link Instead</label>
-        <div style="display:flex; gap:8px;">
-          <input id="attLinkInput" type="url" placeholder="https://... (MLS, Zillow, Google Drive, etc.)" style="flex:1; padding:9px 11px; border:1px solid var(--border); border-radius:8px; font-size:13.5px; background:var(--bg); color:var(--ink);">
-          <button class="btn btn-gold" id="btnAddAttLink">Add Link</button>
-        </div>
-      </div>
-    </div>
-    <p id="attStorageStatus" style="font-size:11.5px; color:var(--gray); margin-top:14px;"></p>
+  <div style="display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:20px; flex-wrap:wrap;">
+    <p id="attStorageStatus" style="font-size:11.5px; color:var(--gray); margin:0;"></p>
+    <button class="btn btn-gold" id="btnOpenAddAttModal">+ Add Comp or Lot</button>
   </div>
 
   <div class="panel" style="margin-bottom:20px;">
-    <h2>Tolerances &amp; Target Specs</h2>
-    <p style="color:var(--gray); font-size:12.5px; margin-top:2px; margin-bottom:14px;">
-      Set how far a comp or lot can be from your estimate before it's flagged as out of range. Bedrooms, bathrooms, and garage bays come straight from Project Information in the Estimate Builder.
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:16px;">
+      <h2 style="margin:0;">Tolerances &amp; Target Specs</h2>
+      <button class="btn btn-sm" id="btnToggleTolLock">
+        <span id="tolLockIcon">&#128275;</span> <span id="tolLockLabel">Locked</span>
+      </button>
+    </div>
+    <p style="color:var(--gray); font-size:12.5px; margin-top:8px; margin-bottom:14px;">
+      Set how far a comp or lot can be from your estimate before it's flagged as out of range. Bedrooms, bathrooms, and garage bays come straight from Project Information in the Estimate Builder. Lock these once set so they don't get bumped by accident while browsing.
     </p>
     <div class="grid-info">
       <div class="field"><label>Target Sqft</label><input id="tolTargetSqft" type="number" min="0" step="1" placeholder="from Estimate Builder"></div>
@@ -1429,7 +1389,8 @@ function hydrateProject(proj){
     if (a.linkedCompIds === undefined) a.linkedCompIds = [];
   });
   if (proj.compsGroupCollapsed === undefined) proj.compsGroupCollapsed = {};
-  if (proj.compsTolerances === undefined) proj.compsTolerances = { targetSqft: '', sqftTolerance: '', targetLotSize: '', lotSizeTolerance: '' };
+  if (proj.compsTolerances === undefined) proj.compsTolerances = { targetSqft: '', sqftTolerance: '', targetLotSize: '', lotSizeTolerance: '', locked: false };
+  if (proj.compsTolerances.locked === undefined) proj.compsTolerances.locked = false;
   if (proj.financing === undefined){
     proj.financing = { loanAmount: '', interestRatePct: '', originationFee: '', constructionMonths: '', holdMonths: '' };
   }
@@ -1690,7 +1651,7 @@ function newProjectShell(name, sqft){
     attachments: [],         // comps & potential lots — PDFs attached for internal use and lender export
     nextAttachmentId: 1,
     compsGroupCollapsed: {}, // remembers which collapsible status groups are closed, per category+status
-    compsTolerances: { targetSqft: '', sqftTolerance: '', targetLotSize: '', lotSizeTolerance: '' },
+    compsTolerances: { targetSqft: '', sqftTolerance: '', targetLotSize: '', lotSizeTolerance: '', locked: false },
     financing: {             // construction loan interest calculator inputs
       loanAmount: '', interestRatePct: '', originationFee: '',
       constructionMonths: '', holdMonths: ''
@@ -3122,6 +3083,28 @@ async function finishAttachmentUpload(){
   saveAppState();
 }
 
+// Opens a base64 data: URL as a real blob: URL instead — modern browsers increasingly block or
+// force-download top-level navigation to data: URLs, but blob: URLs reliably open inline in the
+// browser's own PDF viewer, which is what "just open it" actually means here.
+function openPdfFromDataUrl(dataUrl){
+  try {
+    const commaIdx = dataUrl.indexOf(',');
+    const meta = dataUrl.slice(5, commaIdx); // strips "data:"
+    const mime = meta.split(';')[0] || 'application/pdf';
+    const b64 = dataUrl.slice(commaIdx + 1);
+    const byteChars = atob(b64);
+    const byteNumbers = new Array(byteChars.length);
+    for (let i = 0; i < byteChars.length; i++) byteNumbers[i] = byteChars.charCodeAt(i);
+    const blob = new Blob([new Uint8Array(byteNumbers)], { type: mime });
+    const blobUrl = URL.createObjectURL(blob);
+    window.open(blobUrl, '_blank');
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+  } catch (e) {
+    console.error('Could not convert to a blob URL, falling back to the raw data URL:', e);
+    window.open(dataUrl, '_blank');
+  }
+}
+
 async function viewAttachment(att){
   if (att.link){
     window.open(att.link, '_blank');
@@ -3130,7 +3113,7 @@ async function viewAttachment(att){
     if (error){ alert('Could not open file: ' + error.message); return; }
     window.open(data.signedUrl, '_blank');
   } else if (att.fileDataUrl){
-    window.open(att.fileDataUrl, '_blank');
+    openPdfFromDataUrl(att.fileDataUrl);
   } else {
     alert('This file is unavailable — it may have been uploaded on another device/session.');
   }
@@ -3232,47 +3215,49 @@ function openEditAttachmentModal(id){
         ` : ''}
 
         <div class="field" style="margin-bottom:4px; padding-top:12px; border-top:1px solid var(--border);">
-          <label>PDF File</label>
-          ${hasMainFile ? `
-            <div class="att-row" style="margin:8px 0 10px;">
-              <div class="att-icon" id="mainPdfCard" style="cursor:pointer;">
-                <svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M3.5 1.5h6l3 3v10a1 1 0 0 1-1 1h-8a1 1 0 0 1-1-1v-12a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.3"/><path d="M9 1.5v3h3" stroke="currentColor" stroke-width="1.3"/></svg>
-              </div>
-              <div class="att-info" id="mainPdfCardInfo" style="cursor:pointer;">
-                <div class="att-name">${escapeAttr(att.name)}.pdf</div>
-                <div class="att-meta">${fmtBytes(att.sizeBytes)}${att.storagePath ? '' : ' · stored locally'} — click to view</div>
-              </div>
-              <div class="att-actions">
-                <button class="btn btn-sm btn-danger" id="btnRemoveMainPdf" type="button">Remove</button>
-              </div>
-            </div>
-          ` : `<div style="font-size:12px; color:var(--gray); margin:8px 0 10px;">${currentFileLabel}</div>`}
-          <div id="editAttFileLabel" style="font-size:11.5px; color:var(--good); margin-bottom:8px;"></div>
-          <button class="btn btn-sm" id="btnChooseEditAttFile" type="button">Add PDF</button>
-          <input type="file" id="editAttFileInput" class="file-input" accept="application/pdf">
-        </div>
-
-        <div class="field" style="margin-bottom:4px; padding-top:16px; border-top:1px solid var(--border);">
-          <label>Supporting Documents (Covenants, Restrictions, Surveys, etc.)</label>
-          <p style="font-size:11.5px; color:var(--gray); margin:2px 0 10px;">Attach as many additional PDFs or links as this comp/lot needs.</p>
-          <div id="supportingDocsList" style="margin-bottom:10px;">
-            ${(att.documents || []).length ? (att.documents || []).map(doc => `
-              <div class="att-row" style="padding:9px 12px;">
-                <div class="att-icon" style="width:28px; height:28px;">
-                  ${doc.link
-                    ? `<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M6.5 9.5 9.5 6.5M6 4.5 4.2 6.3a2.5 2.5 0 0 0 3.5 3.5L9.5 8M10 11.5l1.8-1.8a2.5 2.5 0 0 0-3.5-3.5L6.5 8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>`
-                    : `<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M3.5 1.5h6l3 3v10a1 1 0 0 1-1 1h-8a1 1 0 0 1-1-1v-12a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.3"/><path d="M9 1.5v3h3" stroke="currentColor" stroke-width="1.3"/></svg>`}
-                </div>
-                <div class="att-info">
-                  <div class="att-name" style="font-size:12.5px;">${escapeAttr(doc.name)}</div>
-                  <div class="att-meta">${doc.link ? 'Link' : fmtBytes(doc.sizeBytes)} · ${new Date(doc.uploadedAt).toLocaleDateString()}</div>
-                </div>
-                <div class="att-actions">
-                  <button class="btn btn-sm" data-doc-view="${doc.id}">${doc.link ? 'Open' : 'View'}</button>
-                  <button class="btn btn-sm btn-danger" data-doc-remove="${doc.id}">Remove</button>
-                </div>
-              </div>
-            `).join('') : `<div class="att-empty">No supporting documents yet.</div>`}
+          <label>Attached PDFs</label>
+          <p style="font-size:11.5px; color:var(--gray); margin:2px 0 10px;">Add as many PDFs as this comp/lot needs — covenants, restrictions, surveys, listing sheets, whatever. Adding another never replaces one that's already here.</p>
+          <div id="allPdfsList" style="margin-bottom:10px;">
+            ${(() => {
+              const rows = [];
+              if (hasMainFile){
+                rows.push(`
+                  <div class="att-row" style="padding:9px 12px;">
+                    <div class="att-icon" style="width:28px; height:28px;">
+                      <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M3.5 1.5h6l3 3v10a1 1 0 0 1-1 1h-8a1 1 0 0 1-1-1v-12a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.3"/><path d="M9 1.5v3h3" stroke="currentColor" stroke-width="1.3"/></svg>
+                    </div>
+                    <div class="att-info">
+                      <div class="att-name" style="font-size:12.5px;">${escapeAttr(att.name)}.pdf</div>
+                      <div class="att-meta">${fmtBytes(att.sizeBytes)}${att.storagePath ? '' : ' · stored locally'}</div>
+                    </div>
+                    <div class="att-actions">
+                      <button class="btn btn-sm" data-doc-view="main">View</button>
+                      <button class="btn btn-sm btn-danger" data-doc-remove="main">Remove</button>
+                    </div>
+                  </div>
+                `);
+              }
+              (att.documents || []).forEach(doc => {
+                rows.push(`
+                  <div class="att-row" style="padding:9px 12px;">
+                    <div class="att-icon" style="width:28px; height:28px;">
+                      ${doc.link
+                        ? `<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M6.5 9.5 9.5 6.5M6 4.5 4.2 6.3a2.5 2.5 0 0 0 3.5 3.5L9.5 8M10 11.5l1.8-1.8a2.5 2.5 0 0 0-3.5-3.5L6.5 8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>`
+                        : `<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M3.5 1.5h6l3 3v10a1 1 0 0 1-1 1h-8a1 1 0 0 1-1-1v-12a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.3"/><path d="M9 1.5v3h3" stroke="currentColor" stroke-width="1.3"/></svg>`}
+                    </div>
+                    <div class="att-info">
+                      <div class="att-name" style="font-size:12.5px;">${escapeAttr(doc.name)}</div>
+                      <div class="att-meta">${doc.link ? 'Link' : fmtBytes(doc.sizeBytes)} · ${new Date(doc.uploadedAt).toLocaleDateString()}</div>
+                    </div>
+                    <div class="att-actions">
+                      <button class="btn btn-sm" data-doc-view="${doc.id}">${doc.link ? 'Open' : 'View'}</button>
+                      <button class="btn btn-sm btn-danger" data-doc-remove="${doc.id}">Remove</button>
+                    </div>
+                  </div>
+                `);
+              });
+              return rows.length ? rows.join('') : `<div class="att-empty">No PDFs attached yet.</div>`;
+            })()}
           </div>
           <div style="display:flex; gap:24px; flex-wrap:wrap;">
             <div>
@@ -3295,16 +3280,8 @@ function openEditAttachmentModal(id){
     </div>
   `;
 
-  let pendingReplacementFile = null;
-
   document.getElementById('modalCancel').addEventListener('click', closeModal);
   document.getElementById('modalOverlay').addEventListener('click', (e) => { if (e.target.id === 'modalOverlay') closeModal(); });
-  const mainPdfCard = document.getElementById('mainPdfCard');
-  if (mainPdfCard) mainPdfCard.addEventListener('click', () => viewAttachment(att));
-  const mainPdfCardInfo = document.getElementById('mainPdfCardInfo');
-  if (mainPdfCardInfo) mainPdfCardInfo.addEventListener('click', () => viewAttachment(att));
-  const btnRemoveMainPdf = document.getElementById('btnRemoveMainPdf');
-  if (btnRemoveMainPdf) btnRemoveMainPdf.addEventListener('click', () => removeMainPdf(id));
   document.getElementById('btnChooseSupportingDoc').addEventListener('click', () => document.getElementById('supportingDocFileInput').click());
   document.getElementById('supportingDocFileInput').addEventListener('change', e => {
     if (!e.target.files.length) return;
@@ -3316,11 +3293,18 @@ function openEditAttachmentModal(id){
     if (!/^https?:\/\//i.test(link)){ alert('Links should start with http:// or https://'); return; }
     addSupportingDocumentLink(id, link);
   });
-  document.getElementById('supportingDocsList').addEventListener('click', e => {
+  document.getElementById('allPdfsList').addEventListener('click', e => {
     const viewBtn = e.target.closest('[data-doc-view]');
-    if (viewBtn){ viewSupportingDocument(id, viewBtn.dataset.docView); return; }
+    if (viewBtn){
+      if (viewBtn.dataset.docView === 'main') viewAttachment(att);
+      else viewSupportingDocument(id, viewBtn.dataset.docView);
+      return;
+    }
     const removeBtn = e.target.closest('[data-doc-remove]');
-    if (removeBtn){ removeSupportingDocument(id, removeBtn.dataset.docRemove); }
+    if (removeBtn){
+      if (removeBtn.dataset.docRemove === 'main') removeMainPdf(id);
+      else removeSupportingDocument(id, removeBtn.dataset.docRemove);
+    }
   });
   document.getElementById('editAttNeighborhoodSelect').addEventListener('change', e => {
     const newInput = document.getElementById('editAttNeighborhoodNew');
@@ -3332,15 +3316,7 @@ function openEditAttachmentModal(id){
       newInput.classList.add('hidden');
     }
   });
-  document.getElementById('btnChooseEditAttFile').addEventListener('click', () => document.getElementById('editAttFileInput').click());
-  document.getElementById('editAttFileInput').addEventListener('change', e => {
-    const file = e.target.files[0];
-    if (!file) return;
-    if (file.type !== 'application/pdf'){ alert('Please choose a PDF file.'); e.target.value = ''; return; }
-    pendingReplacementFile = file;
-    document.getElementById('editAttFileLabel').textContent = `Will replace with: ${file.name} (${fmtBytes(file.size)}) — save to apply`;
-  });
-  document.getElementById('modalSaveAttEdit').addEventListener('click', () => saveAttachmentEdits(id, () => pendingReplacementFile));
+  document.getElementById('modalSaveAttEdit').addEventListener('click', () => saveAttachmentEdits(id));
 }
 
 // Removes just the main PDF file, independent of adding a new one — so you can clear it out
@@ -3367,7 +3343,7 @@ async function removeMainPdf(id){
   openEditAttachmentModal(id);
 }
 
-async function saveAttachmentEdits(id, getReplacementFile){
+async function saveAttachmentEdits(id){
   const proj = current();
   const att = attachmentsCache.find(a => String(a.id) === String(id));
   if (!att) return;
@@ -3393,40 +3369,10 @@ async function saveAttachmentEdits(id, getReplacementFile){
     updates.linkedCompIds = Array.from(linkedCompsChecklist.querySelectorAll('.linked-comp-checkbox:checked')).map(cb => cb.value);
   }
 
-  const replacementFile = getReplacementFile ? getReplacementFile() : null;
   const nameKey = projectNameKey(proj);
   const isSharedRow = att.source === 'remote' && sbClient;
 
   try {
-    // Swap in a new PDF first, if one was chosen — replaces the file wherever this entry actually lives.
-    if (replacementFile){
-      if (isSharedRow){
-        if (att.storagePath) await sbClient.storage.from(ATTACHMENTS_BUCKET).remove([att.storagePath]);
-        const safeName = replacementFile.name.replace(/[^a-z0-9.\-_]+/gi, '_');
-        const newPath = `${(nameKey || 'project').replace(/[^a-z0-9.\-_]+/gi,'_')}/${Date.now()}-${safeName}`;
-        const { error: upErr } = await sbClient.storage.from(ATTACHMENTS_BUCKET).upload(newPath, replacementFile, { contentType: 'application/pdf' });
-        if (upErr) throw upErr;
-        updates.storage_path = newPath;
-        updates.size_bytes = replacementFile.size;
-        updates.link = null; // a real file replaces a link-only entry
-      } else {
-        if (replacementFile.size > MAX_LOCAL_ATTACHMENT_BYTES){
-          alert(`That file is ${fmtBytes(replacementFile.size)} — local storage is capped at ${fmtBytes(MAX_LOCAL_ATTACHMENT_BYTES)}. Connect Supabase Storage for larger files.`);
-          if (saveBtn){ saveBtn.disabled = false; saveBtn.textContent = 'Save Changes'; }
-          return;
-        }
-        const dataUrl = await new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = e => resolve(e.target.result);
-          reader.onerror = reject;
-          reader.readAsDataURL(replacementFile);
-        });
-        updates.fileDataUrl = dataUrl;
-        updates.sizeBytes = replacementFile.size;
-        updates.link = '';
-      }
-    }
-
     if (isSharedRow){
       const remotePayload = {
         category: updates.category, neighborhood: updates.neighborhood, name: updates.name, notes: updates.notes, link: updates.link || null,
@@ -3434,7 +3380,6 @@ async function saveAttachmentEdits(id, getReplacementFile){
         bedrooms: updates.bedrooms || null, bathrooms: updates.bathrooms || null, garage_bays: updates.garageBays || null
       };
       if (updates.linkedCompIds) remotePayload.linked_comp_ids = updates.linkedCompIds;
-      if (updates.storage_path){ remotePayload.storage_path = updates.storage_path; remotePayload.size_bytes = updates.size_bytes; }
       const { error } = await sbClient.from(ATTACHMENTS_TABLE).update(remotePayload).eq('id', id);
       if (error) throw error;
     } else {
@@ -3548,7 +3493,7 @@ async function viewSupportingDocument(attId, docId){
     if (error){ alert('Could not open file: ' + error.message); return; }
     window.open(data.signedUrl, '_blank');
   } else if (doc.fileDataUrl){
-    window.open(doc.fileDataUrl, '_blank');
+    openPdfFromDataUrl(doc.fileDataUrl);
   }
 }
 
@@ -3636,6 +3581,14 @@ async function renderAttachments(){
     const key = id === 'tolSqft' ? 'sqftTolerance' : id === 'tolTargetLotSize' ? 'targetLotSize' : 'lotSizeTolerance';
     if (el && document.activeElement !== el) el.value = tol[key];
   });
+  ['tolTargetSqft','tolSqft','tolTargetLotSize','tolLotSize'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = !!tol.locked;
+  });
+  const tolLockLabel = document.getElementById('tolLockLabel');
+  const tolLockIcon = document.getElementById('tolLockIcon');
+  if (tolLockLabel){ tolLockLabel.textContent = tol.locked ? 'Locked' : 'Unlocked'; }
+  if (tolLockIcon){ tolLockIcon.innerHTML = tol.locked ? '&#128274;' : '&#128275;'; }
   const specsReadoutEl = document.getElementById('targetSpecsReadout');
   if (specsReadoutEl){
     specsReadoutEl.innerHTML = `<b style="color:var(--ink);">Target Specs (from Estimate Builder):</b> ${proj.project.bed || 0} Bed &middot; ${proj.project.bath || 0} Bath &middot; ${proj.project.garage || 0} Garage Bay${(proj.project.garage||0)===1?'':'s'}`;
@@ -3670,7 +3623,7 @@ async function renderAttachments(){
     `;
   };
 
-  const attRowHtml = (att) => {
+  const attRowHtml = (att, nested) => {
     const linkIcon = att.link
       ? `<svg width="19" height="19" viewBox="0 0 16 16" fill="none"><path d="M6.5 9.5 9.5 6.5M6 4.5 4.2 6.3a2.5 2.5 0 0 0 3.5 3.5L9.5 8M10 11.5l1.8-1.8a2.5 2.5 0 0 0-3.5-3.5L6.5 8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>`
       : `<svg width="19" height="19" viewBox="0 0 16 16" fill="none"><path d="M3.5 1.5h6l3 3v10a1 1 0 0 1-1 1h-8a1 1 0 0 1-1-1v-12a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.3"/><path d="M9 1.5v3h3" stroke="currentColor" stroke-width="1.3"/></svg>`;
@@ -3689,48 +3642,48 @@ async function renderAttachments(){
       matchChip('Garage', att.garageBays, proj.project.garage)
     ].filter(Boolean).join(' ');
 
-    let linkedCompsHtml = '';
-    if (att.category === 'lot' && (att.linkedCompIds || []).length){
-      const linkedComps = (att.linkedCompIds || []).map(cid => attachmentsCache.find(a => String(a.id) === String(cid))).filter(Boolean);
-      if (linkedComps.length){
-        linkedCompsHtml = `<div class="linked-comps-strip">` +
-          linkedComps.map(c => `<span class="linked-comp-pill" data-att-open-details="${c.id}">${escapeAttr(c.name)}</span>`).join('') +
-          `</div>`;
-      }
-    }
-
     return `
-      <div>
-        <div class="att-row">
-          <label class="att-compare-toggle" title="Select to compare">
-            <input type="checkbox" class="compare-checkbox" data-att-compare="${att.id}" ${compareSelection.has(String(att.id)) ? 'checked' : ''}>
-          </label>
-          <label class="att-include-toggle">
-            <input type="checkbox" ${att.includeInBankPdf ? 'checked' : ''} data-att-include="${att.id}">
-            Bank PDF
-          </label>
-          <div class="att-icon" data-att-open-details="${att.id}" style="cursor:pointer;">${linkIcon}</div>
-          <div class="att-info" data-att-open-details="${att.id}" style="cursor:pointer;">
-            <div class="att-name">${escapeAttr(att.name)}</div>
-            <div class="att-meta">${metaBits.join(' · ')}</div>
-            ${chips ? `<div style="margin-top:5px; display:flex; gap:5px; flex-wrap:wrap;">${chips}</div>` : ''}
-          </div>
-          ${statusSegmented(att)}
-          <div class="att-actions">
-            <button class="icon-btn" data-att-view="${att.id}" title="${att.link ? 'Open Link' : 'View'}">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M1.3 8s2.4-4.5 6.7-4.5S14.7 8 14.7 8s-2.4 4.5-6.7 4.5S1.3 8 1.3 8Z" stroke="currentColor" stroke-width="1.3"/><circle cx="8" cy="8" r="2" stroke="currentColor" stroke-width="1.3"/></svg>
-            </button>
-            <button class="icon-btn" data-att-edit="${att.id}" title="Edit">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M10.5 2.5 13.5 5.5 5 14H2V11L10.5 2.5Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
-            </button>
-            <button class="icon-btn danger" data-att-delete="${att.id}" title="Remove">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 4.5h10M6.5 4.5V3a1 1 0 0 1 1-1h1a1 1 0 0 1 1 1v1.5M4.5 4.5l.6 8.5a1 1 0 0 0 1 .9h3.8a1 1 0 0 0 1-.9l.6-8.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            </button>
-          </div>
+      <div class="att-row" style="${nested ? 'background:var(--bg); box-shadow:none;' : ''}">
+        <label class="att-compare-toggle" title="Select to compare">
+          <input type="checkbox" class="compare-checkbox" data-att-compare="${att.id}" ${compareSelection.has(String(att.id)) ? 'checked' : ''}>
+        </label>
+        <label class="att-include-toggle">
+          <input type="checkbox" ${att.includeInBankPdf ? 'checked' : ''} data-att-include="${att.id}">
+          Bank PDF
+        </label>
+        <div class="att-icon" data-att-open-details="${att.id}" style="cursor:pointer;">${linkIcon}</div>
+        <div class="att-info" data-att-open-details="${att.id}" style="cursor:pointer;">
+          <div class="att-name">${escapeAttr(att.name)}</div>
+          <div class="att-meta">${metaBits.join(' · ')}</div>
+          ${chips ? `<div style="margin-top:5px; display:flex; gap:5px; flex-wrap:wrap;">${chips}</div>` : ''}
         </div>
-        ${linkedCompsHtml}
+        ${statusSegmented(att)}
+        <div class="att-actions">
+          <button class="icon-btn" data-att-view="${att.id}" title="${att.link ? 'Open Link' : 'View'}">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M1.3 8s2.4-4.5 6.7-4.5S14.7 8 14.7 8s-2.4 4.5-6.7 4.5S1.3 8 1.3 8Z" stroke="currentColor" stroke-width="1.3"/><circle cx="8" cy="8" r="2" stroke="currentColor" stroke-width="1.3"/></svg>
+          </button>
+          <button class="icon-btn" data-att-edit="${att.id}" title="Edit">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M10.5 2.5 13.5 5.5 5 14H2V11L10.5 2.5Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+          </button>
+          <button class="icon-btn danger" data-att-delete="${att.id}" title="Remove">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 4.5h10M6.5 4.5V3a1 1 0 0 1 1-1h1a1 1 0 0 1 1 1v1.5M4.5 4.5l.6 8.5a1 1 0 0 0 1 .9h3.8a1 1 0 0 0 1-.9l.6-8.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
       </div>
     `;
+  };
+
+  // A lot, followed by its linked comps nested and indented directly underneath it — lots are the
+  // hierarchy, comps are what's backing them up.
+  const lotWithNestedCompsHtml = (lot) => {
+    const linkedComps = (lot.linkedCompIds || []).map(cid => attachmentsCache.find(a => String(a.id) === String(cid))).filter(Boolean);
+    const nestedHtml = linkedComps.length
+      ? `<div class="nested-comps-wrap">
+           <div style="font-size:10px; text-transform:uppercase; letter-spacing:0.05em; color:var(--gray-light); font-weight:700; margin-bottom:6px;">Comps for this lot</div>
+           ${linkedComps.map(c => attRowHtml(c, true)).join('')}
+         </div>`
+      : '';
+    return attRowHtml(lot) + nestedHtml;
   };
 
   const container = document.getElementById('compsListByNeighborhood');
@@ -3750,7 +3703,8 @@ async function renderAttachments(){
   }
 
   // Group by neighborhood first (blank/unset goes into a catch-all "Unassigned" group at the end),
-  // then split each neighborhood into Comps and Lots so it's always clear what's what.
+  // then within each neighborhood, Lots come first as the hierarchy, with their linked comps nested
+  // directly underneath — any comp not linked to a lot shows in its own section below that.
   const byNeighborhood = {};
   filtered.forEach(a => {
     const key = (a.neighborhood || '').trim() || 'Unassigned';
@@ -3762,12 +3716,16 @@ async function renderAttachments(){
     return a.localeCompare(b);
   });
 
+  // Every comp linked to any lot anywhere, so we know which comps are "unlinked" within a neighborhood.
+  const linkedCompIdSet = new Set();
+  filtered.forEach(a => { if (a.category === 'lot') (a.linkedCompIds || []).forEach(cid => linkedCompIdSet.add(String(cid))); });
+
   container.innerHTML = neighborhoodKeys.map(nb => {
     const items = byNeighborhood[nb];
     const groupKey = `neighborhood_${nb}`;
     const isCollapsed = !!proj.compsGroupCollapsed[groupKey];
-    const comps = items.filter(a => a.category === 'comp');
     const lots = items.filter(a => a.category === 'lot');
+    const unlinkedComps = items.filter(a => a.category === 'comp' && !linkedCompIdSet.has(String(a.id)));
     return `
       <div class="neighborhood-group">
         <div class="neighborhood-head" data-att-group-toggle="${groupKey}">
@@ -3777,8 +3735,8 @@ async function renderAttachments(){
         </div>
         ${isCollapsed ? '' : `
           <div class="neighborhood-body">
-            ${comps.length ? `<div class="nb-category-label">Comps (Comparable Sales) — ${comps.length}</div>${comps.map(attRowHtml).join('')}` : ''}
-            ${lots.length ? `<div class="nb-category-label">Potential Lots — ${lots.length}</div>${lots.map(attRowHtml).join('')}` : ''}
+            ${lots.length ? `<div class="nb-category-label">Potential Lots — ${lots.length}</div>${lots.map(lotWithNestedCompsHtml).join('')}` : ''}
+            ${unlinkedComps.length ? `<div class="nb-category-label">${lots.length ? 'Comps Not Linked to a Lot' : 'Comps (Comparable Sales)'} — ${unlinkedComps.length}</div>${unlinkedComps.map(a => attRowHtml(a)).join('')}` : ''}
           </div>
         `}
       </div>
@@ -3804,53 +3762,36 @@ function updateCompareBar(){
 }
 
 // Side-by-side comparison of whichever comps/lots are checked — one column per item, one row per spec.
-function openCompareModal(){
+// Resolves a viewable URL for an attachment's PDF (signed URL for cloud storage, or the raw data
+// URL for local files). Returns null for link-only entries — there's no PDF to embed.
+async function resolveViewableUrl(att){
+  if (att.storagePath && sbClient){
+    const { data, error } = await sbClient.storage.from(ATTACHMENTS_BUCKET).createSignedUrl(att.storagePath, 3600);
+    if (error) return null;
+    return data.signedUrl;
+  }
+  if (att.fileDataUrl) return att.fileDataUrl;
+  // No main file — fall back to the first attached document that actually has a PDF, if any.
+  const firstDoc = (att.documents || []).find(d => d.storagePath || d.fileDataUrl);
+  if (firstDoc) return resolveViewableUrl(firstDoc);
+  return null;
+}
+
+// Actual PDFs shown side by side, one column per selected comp/lot — not a spec table, since the
+// point is to look at the documents themselves.
+async function openCompareModal(){
   const items = attachmentsCache.filter(a => compareSelection.has(String(a.id)));
   if (items.length < 2) return;
-
-  const rows = [
-    { label: 'Category', get: a => a.category === 'lot' ? 'Potential Lot' : 'Comp' },
-    { label: 'Neighborhood', get: a => a.neighborhood || '—' },
-    { label: 'Status', get: a => a.status === 'approved' ? 'Approved' : a.status === 'rejected' ? 'Rejected' : 'In Review' },
-    { label: 'Square Footage', get: a => a.sqft || '—' },
-    { label: 'Lot Size (acres)', get: a => a.lotSizeAcres || '—' },
-    { label: 'Sale / Asking Price', get: a => a.salePrice ? fmtMoney(a.salePrice) : '—' },
-    { label: 'Price / Sqft', get: a => (a.salePrice && a.sqft) ? fmtMoney2(Number(a.salePrice)/Number(a.sqft)) : '—' },
-    { label: 'Bedrooms', get: a => a.bedrooms || '—' },
-    { label: 'Bathrooms', get: a => a.bathrooms || '—' },
-    { label: 'Garage Bays', get: a => a.garageBays || '—' },
-    { label: 'Notes', get: a => a.notes || '—' }
-  ];
 
   const root = document.getElementById('modalRoot');
   root.innerHTML = `
     <div class="modal-overlay" id="modalOverlay">
-      <div class="modal modal-lg" style="width:${Math.min(920, 300 + items.length*220)}px;">
-        <h3>Compare ${items.length} Comps &amp; Lots</h3>
-        <p style="font-size:11.5px; color:var(--gray); margin:-8px 0 14px;">Side-by-side spec comparison, based on what's been entered for each.</p>
-        <div class="modal-scroll-body">
-          <table class="items" style="min-width:100%;">
-            <thead>
-              <tr>
-                <th style="width:140px;">Spec</th>
-                ${items.map(a => `<th>${escapeAttr(a.name)}</th>`).join('')}
-              </tr>
-            </thead>
-            <tbody>
-              ${rows.map(row => `
-                <tr>
-                  <td style="font-weight:700; color:var(--ink);">${row.label}</td>
-                  ${items.map(a => `<td>${escapeAttr(String(row.get(a)))}</td>`).join('')}
-                </tr>
-              `).join('')}
-              <tr>
-                <td style="font-weight:700; color:var(--ink);">File</td>
-                ${items.map(a => `<td><button class="btn btn-sm" data-compare-view="${a.id}">${a.link ? 'Open Link' : 'View'}</button></td>`).join('')}
-              </tr>
-            </tbody>
-          </table>
+      <div class="modal" style="width:95vw; max-width:1600px; height:90vh; max-height:90vh; display:flex; flex-direction:column;">
+        <h3 style="flex-shrink:0;">Compare ${items.length} PDFs</h3>
+        <div id="compareGridWrap" style="flex:1; min-height:0; margin-top:10px; display:flex; gap:12px; overflow-x:auto;">
+          ${items.map(a => `<div style="flex:1; min-width:280px; display:flex; align-items:center; justify-content:center; color:var(--gray); font-size:12.5px;">Loading ${escapeAttr(a.name)}...</div>`).join('')}
         </div>
-        <div class="modal-actions">
+        <div class="modal-actions" style="flex-shrink:0;">
           <button class="btn" id="modalCancel">Close</button>
         </div>
       </div>
@@ -3859,16 +3800,97 @@ function openCompareModal(){
 
   document.getElementById('modalCancel').addEventListener('click', closeModal);
   document.getElementById('modalOverlay').addEventListener('click', (e) => { if (e.target.id === 'modalOverlay') closeModal(); });
-  root.querySelectorAll('[data-compare-view]').forEach(btn => {
+
+  const urls = await Promise.all(items.map(a => resolveViewableUrl(a)));
+  const wrap = document.getElementById('compareGridWrap');
+  if (!wrap) return; // modal was closed before the URLs finished loading
+
+  wrap.innerHTML = items.map((a, i) => {
+    const url = urls[i];
+    return `
+      <div style="flex:1; min-width:280px; display:flex; flex-direction:column; border:1px solid var(--border); border-radius:10px; overflow:hidden;">
+        <div style="padding:10px 12px; background:var(--bg); border-bottom:1px solid var(--border); font-size:12.5px; font-weight:700; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+          ${escapeAttr(a.name)}
+        </div>
+        ${url
+          ? `<iframe src="${url}" style="flex:1; border:none; width:100%;"></iframe>`
+          : `<div style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; color:var(--gray); font-size:12.5px; padding:20px; text-align:center;">
+               ${a.link ? 'This is a link, not a PDF — open it directly instead.' : 'No PDF available to preview.'}
+               ${a.link ? `<button class="btn btn-sm" data-compare-open-link="${a.id}">Open Link</button>` : ''}
+             </div>`}
+      </div>
+    `;
+  }).join('');
+
+  wrap.querySelectorAll('[data-compare-open-link]').forEach(btn => {
     btn.addEventListener('click', () => {
-      const att = attachmentsCache.find(a => String(a.id) === String(btn.dataset.compareView));
+      const att = items.find(a => String(a.id) === String(btn.dataset.compareOpenLink));
       if (att) viewAttachment(att);
     });
   });
 }
 
+// Add Comp or Lot — now a modal instead of a permanent block taking up page space. Stays open after
+// a successful add so you can keep adding more without reopening it.
+function openAddAttachmentModal(){
+  const root = document.getElementById('modalRoot');
+  root.innerHTML = `
+    <div class="modal-overlay" id="modalOverlay">
+      <div class="modal modal-lg">
+        <h3>Add a Comp or Lot</h3>
+        <div class="modal-scroll-body">
+          <div class="grid-info">
+            <div class="field"><label>Category</label>
+              <select id="attCategory">
+                <option value="comp">Comp (Comparable Sale)</option>
+                <option value="lot">Potential Lot</option>
+              </select>
+            </div>
+            <div class="field"><label>Neighborhood / Subdivision</label>
+              <select id="attNeighborhoodSelect">${buildNeighborhoodOptionsHtml('')}</select>
+              <input id="attNeighborhoodNew" type="text" class="hidden" placeholder="New neighborhood name" style="margin-top:8px;">
+            </div>
+            <div class="field"><label>Name / Address</label><input id="attName" type="text" placeholder="e.g. 412 Ridgeline Dr — Sold $712k"></div>
+            <div class="field"><label>Notes</label><input id="attNotes" type="text" placeholder="Optional — sale date, condition, etc."></div>
+          </div>
 
-function attachCompsEvents(){
+          <div class="grid-info" style="margin-top:16px; padding-top:16px; border-top:1px solid var(--border);">
+            <div class="field"><label>Square Footage</label><input id="attSqft" type="number" min="0" step="1" placeholder="e.g. 2500"></div>
+            <div class="field"><label>Lot Size (acres)</label><input id="attLotSizeAcres" type="number" min="0" step="0.01" placeholder="e.g. 0.35"></div>
+            <div class="field"><label>Sale / Asking Price ($)</label><input id="attSalePrice" type="number" min="0" step="1000" placeholder="e.g. 725000"></div>
+            <div class="field"><label>Bedrooms</label><input id="attBedrooms" type="number" min="0" step="1" placeholder="e.g. 4"></div>
+            <div class="field"><label>Bathrooms</label><input id="attBathrooms" type="number" min="0" step="0.5" placeholder="e.g. 2.5"></div>
+            <div class="field"><label>Garage Bays</label><input id="attGarageBays" type="number" min="0" step="1" placeholder="e.g. 2"></div>
+          </div>
+
+          <div style="margin-top:16px; padding-top:16px; border-top:1px solid var(--border); display:flex; gap:24px; flex-wrap:wrap;">
+            <div style="flex:1; min-width:240px;">
+              <label style="display:block; font-size:10.5px; font-weight:600; color:var(--gray); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:8px;">Attach a PDF</label>
+              <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+                <button class="btn btn-gold" type="button" id="btnChooseAttFile">Choose PDF File</button>
+                <input type="file" id="attFileInput" class="file-input" accept="application/pdf">
+                <span id="attChosenFileName" style="font-size:12.5px; color:var(--gray);"></span>
+              </div>
+            </div>
+            <div style="flex:1; min-width:240px;">
+              <label style="display:block; font-size:10.5px; font-weight:600; color:var(--gray); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:8px;">Or Paste a Link Instead</label>
+              <div style="display:flex; gap:8px;">
+                <input id="attLinkInput" type="url" placeholder="https://... (MLS, Zillow, Google Drive, etc.)" style="flex:1; padding:9px 11px; border:1px solid var(--border); border-radius:8px; font-size:13.5px; background:var(--bg); color:var(--ink);">
+                <button class="btn btn-gold" type="button" id="btnAddAttLink">Add Link</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button class="btn" id="modalCancel">Done</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('modalCancel').addEventListener('click', closeModal);
+  document.getElementById('modalOverlay').addEventListener('click', (e) => { if (e.target.id === 'modalOverlay') closeModal(); });
+
   document.getElementById('attNeighborhoodSelect').addEventListener('change', e => {
     const newInput = document.getElementById('attNeighborhoodNew');
     if (e.target.value === '__new__'){
@@ -3893,7 +3915,11 @@ function attachCompsEvents(){
     uploadAttachment(file);
   });
   document.getElementById('btnAddAttLink').addEventListener('click', () => addAttachmentLink());
-  document.getElementById('attLinkInput').addEventListener('keydown', e => { if (e.key === 'Enter') addAttachmentLink(); });
+  document.getElementById('attLinkInput').addEventListener('keydown', e => { if (e.key === 'Enter'){ e.preventDefault(); addAttachmentLink(); } });
+}
+
+function attachCompsEvents(){
+  document.getElementById('btnOpenAddAttModal').addEventListener('click', () => openAddAttachmentModal());
 
   document.getElementById('attStatusFilter').addEventListener('click', (e) => {
     const tab = e.target.closest('[data-att-status-filter]');
@@ -3917,6 +3943,14 @@ function attachCompsEvents(){
   bindTolField('tolSqft', 'sqftTolerance');
   bindTolField('tolTargetLotSize', 'targetLotSize');
   bindTolField('tolLotSize', 'lotSizeTolerance');
+
+  document.getElementById('btnToggleTolLock').addEventListener('click', () => {
+    const proj = current();
+    if (!proj) return;
+    proj.compsTolerances.locked = !proj.compsTolerances.locked;
+    saveAppStateDebounced();
+    renderAttachments();
+  });
 
   document.getElementById('btnClearCompareSelection').addEventListener('click', () => {
     compareSelection.clear();
@@ -4957,7 +4991,7 @@ async function getMergeableAttachments(proj, idsFilter){
     const { data, error } = await sbClient.from(ATTACHMENTS_TABLE).select('*').eq('project_name', nameKey);
     if (!error) allAttachments = (data || []).map(normalizeRemoteAttachment);
   }
-  let list = allAttachments.filter(a => (a.storagePath || a.fileDataUrl));
+  let list = allAttachments.filter(a => (a.storagePath || a.fileDataUrl || (a.documents || []).some(d => d.storagePath || d.fileDataUrl)));
   if (idsFilter) list = list.filter(a => idsFilter.has(String(a.id)));
   return list;
 }
@@ -4993,12 +5027,20 @@ async function mergeAndDownload(docs, attachments, filename){
   }
 
   for (const att of (attachments || [])){
-    try {
-      const bytes = await fetchAttachmentBytes(att);
-      const donor = await PDFDocument.load(bytes);
-      const pages = await mergedPdf.copyPages(donor, donor.getPageIndices());
-      pages.forEach(pg => mergedPdf.addPage(pg));
-    } catch (e){ console.error(`Could not merge attachment "${att.name}":`, e); }
+    // Merge every PDF for this comp/lot — the main file (if any) plus every attached document —
+    // not just the first one, so nothing gets left out of the export.
+    const filesToMerge = [];
+    if (att.storagePath || att.fileDataUrl) filesToMerge.push(att);
+    (att.documents || []).forEach(doc => { if (doc.storagePath || doc.fileDataUrl) filesToMerge.push(doc); });
+
+    for (const f of filesToMerge){
+      try {
+        const bytes = await fetchAttachmentBytes(f);
+        const donor = await PDFDocument.load(bytes);
+        const pages = await mergedPdf.copyPages(donor, donor.getPageIndices());
+        pages.forEach(pg => mergedPdf.addPage(pg));
+      } catch (e){ console.error(`Could not merge a PDF for "${att.name}":`, e); }
+    }
   }
 
   const mergedBytes = await mergedPdf.save();
