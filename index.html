@@ -128,6 +128,20 @@ h1,h2,h3,h4{font-family:var(--app-font); font-weight:700; letter-spacing:-0.01em
 .att-status-head .att-status-count{font-size:11px; font-weight:700; color:var(--white); background:var(--gray-light); border-radius:20px; padding:1px 8px;}
 .att-status-body{padding-left:4px;}
 
+/* ---------- Neighborhood grouping ---------- */
+.neighborhood-group{background:var(--white); border:1px solid var(--border); border-radius:12px; margin-bottom:16px; overflow:hidden; box-shadow:var(--shadow);}
+.neighborhood-head{display:flex; align-items:center; gap:12px; cursor:pointer; padding:16px 20px; user-select:none; background:var(--bg);}
+.neighborhood-head .caret{font-size:11px; color:var(--gray); width:12px; display:inline-block;}
+.neighborhood-head .nb-name{font-size:15px; font-weight:800; color:var(--ink); letter-spacing:-0.01em;}
+.neighborhood-head .nb-count{font-size:11px; font-weight:700; color:var(--white); background:var(--gold); border-radius:20px; padding:2px 10px; margin-left:auto;}
+.neighborhood-body{padding:16px 20px 18px;}
+.nb-category-label{font-size:10.5px; text-transform:uppercase; letter-spacing:0.06em; color:var(--gray); font-weight:700; margin:14px 0 8px;}
+.nb-category-label:first-child{margin-top:0;}
+.att-status-badge{font-size:9.5px; text-transform:uppercase; letter-spacing:0.04em; font-weight:700; padding:2px 8px; border-radius:20px; white-space:nowrap;}
+.att-status-badge.review{background:var(--active-bg); color:var(--gray);}
+.att-status-badge.approved{background:#E4ECE4; color:var(--good);}
+.att-status-badge.rejected{background:var(--attn-bg); color:var(--attn-text);}
+
 .tabs{display:flex; gap:3px; padding:14px 28px; background:var(--white); border-bottom:1px solid var(--border);}
 .tab{
   padding:9px 16px; font-size:13px; font-weight:600; color:var(--gray); cursor:pointer;
@@ -693,6 +707,10 @@ tr.subtotal-row td{
           <option value="lot">Potential Lot</option>
         </select>
       </div>
+      <div class="field"><label>Neighborhood / Subdivision</label>
+        <input id="attNeighborhood" type="text" list="neighborhoodSuggestions" placeholder="e.g. Ridgeline Estates">
+        <datalist id="neighborhoodSuggestions"></datalist>
+      </div>
       <div class="field"><label>Name / Address</label><input id="attName" type="text" placeholder="e.g. 412 Ridgeline Dr — Sold $712k"></div>
       <div class="field"><label>Notes</label><input id="attNotes" type="text" placeholder="Optional — sqft, sale date, asking price, etc."></div>
     </div>
@@ -717,11 +735,16 @@ tr.subtotal-row td{
     <p id="attStorageStatus" style="font-size:11.5px; color:var(--gray); margin-top:14px;"></p>
   </div>
 
-  <div class="section-label">Comps (Comparable Sales)</div>
-  <div id="compsListComp"></div>
-
-  <div class="section-label">Potential Lots</div>
-  <div id="compsListLot"></div>
+  <div style="display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:4px;">
+    <div class="section-label" style="margin:0;">Organized by Neighborhood</div>
+    <div class="dash-filter" id="attStatusFilter">
+      <div class="dash-filter-tab active" data-att-status-filter="all">All</div>
+      <div class="dash-filter-tab" data-att-status-filter="review">In Review</div>
+      <div class="dash-filter-tab" data-att-status-filter="approved">Approved</div>
+      <div class="dash-filter-tab" data-att-status-filter="rejected">Rejected</div>
+    </div>
+  </div>
+  <div id="compsListByNeighborhood" style="margin-top:14px;"></div>
 </div>
 
 <div id="financeView" class="main" style="display:none;">
@@ -1332,6 +1355,7 @@ function hydrateProject(proj){
   proj.attachments.forEach(a => {
     if (a.status === undefined) a.status = 'review';
     if (a.documents === undefined) a.documents = [];
+    if (a.neighborhood === undefined) a.neighborhood = '';
   });
   if (proj.compsGroupCollapsed === undefined) proj.compsGroupCollapsed = {};
   if (proj.financing === undefined){
@@ -2880,6 +2904,7 @@ function updateAttStorageStatus(nameKey){
 function normalizeRemoteAttachment(row){
   return {
     id: row.id, name: row.name, category: row.category, notes: row.notes || '', link: row.link || '',
+    neighborhood: row.neighborhood || '',
     storagePath: row.storage_path || '', sizeBytes: row.size_bytes || 0, status: row.status || 'review',
     includeInBankPdf: row.include_in_bank_pdf !== false, uploadedAt: new Date(row.created_at).getTime(),
     documents: Array.isArray(row.documents) ? row.documents : [],
@@ -2892,6 +2917,7 @@ async function uploadAttachment(file){
   if (!proj || !file) return;
 
   const category = document.getElementById('attCategory').value;
+  const neighborhood = document.getElementById('attNeighborhood').value.trim();
   const name = document.getElementById('attName').value.trim() || file.name;
   const notes = document.getElementById('attNotes').value.trim();
   const nameKey = projectNameKey(proj);
@@ -2905,7 +2931,7 @@ async function uploadAttachment(file){
       return;
     }
     const { error: insErr } = await sbClient.from(ATTACHMENTS_TABLE).insert([{
-      project_name: nameKey, category, name, notes, storage_path: path, size_bytes: file.size,
+      project_name: nameKey, category, name, notes, neighborhood, storage_path: path, size_bytes: file.size,
       status: 'review', include_in_bank_pdf: true, created_by: currentAuthUser ? currentAuthUser.email : null
     }]);
     if (insErr){ alert('Could not save attachment record: ' + insErr.message); return; }
@@ -2918,7 +2944,7 @@ async function uploadAttachment(file){
     alert(`This file is ${fmtBytes(file.size)}. Without shared Supabase Storage active, local files are capped at ${fmtBytes(MAX_LOCAL_ATTACHMENT_BYTES)}. Connect Supabase (and name this project) for larger files and team-wide visibility.`);
     return;
   }
-  const record = { id: proj.nextAttachmentId++, name, category, notes, uploadedAt: Date.now(), sizeBytes: file.size, includeInBankPdf: true, status: 'review', documents: [] };
+  const record = { id: proj.nextAttachmentId++, name, category, notes, neighborhood, uploadedAt: Date.now(), sizeBytes: file.size, includeInBankPdf: true, status: 'review', documents: [] };
   const reader = new FileReader();
   reader.onload = (e) => {
     record.fileDataUrl = e.target.result;
@@ -2937,13 +2963,14 @@ async function addAttachmentLink(){
   if (!/^https?:\/\//i.test(link)){ alert('Links should start with http:// or https://'); return; }
 
   const category = document.getElementById('attCategory').value;
+  const neighborhood = document.getElementById('attNeighborhood').value.trim();
   const name = document.getElementById('attName').value.trim() || link;
   const notes = document.getElementById('attNotes').value.trim();
   const nameKey = projectNameKey(proj);
 
   if (sbClient && nameKey && attachmentsSharedMode){
     const { error } = await sbClient.from(ATTACHMENTS_TABLE).insert([{
-      project_name: nameKey, category, name, notes, link,
+      project_name: nameKey, category, name, notes, neighborhood, link,
       status: 'review', include_in_bank_pdf: true, created_by: currentAuthUser ? currentAuthUser.email : null
     }]);
     if (error){ alert('Could not save link: ' + error.message); return; }
@@ -2952,7 +2979,7 @@ async function addAttachmentLink(){
     return;
   }
 
-  const record = { id: proj.nextAttachmentId++, name, category, notes, link, uploadedAt: Date.now(), includeInBankPdf: true, status: 'review', documents: [] };
+  const record = { id: proj.nextAttachmentId++, name, category, notes, neighborhood, link, uploadedAt: Date.now(), includeInBankPdf: true, status: 'review', documents: [] };
   proj.attachments.push(record);
   document.getElementById('attLinkInput').value = '';
   finishAttachmentUpload();
@@ -3011,9 +3038,10 @@ function openEditAttachmentModal(id){
     `Added ${new Date(att.uploadedAt).toLocaleDateString()}`,
     att.source === 'remote' ? 'Shared with your team' : (att.storagePath ? 'Cloud storage' : 'Local to this browser')
   ];
-  const currentFileLabel = att.link
-    ? 'No PDF attached — this is a link-only entry.'
-    : `Current file: ${fmtBytes(att.sizeBytes)}${att.storagePath ? '' : ' (stored locally)'}`;
+  const hasMainFile = !!(att.storagePath || att.fileDataUrl);
+  const currentFileLabel = hasMainFile
+    ? `Current file: ${fmtBytes(att.sizeBytes)}${att.storagePath ? '' : ' (stored locally)'}`
+    : 'No PDF attached yet.';
 
   const root = document.getElementById('modalRoot');
   root.innerHTML = `
@@ -3031,6 +3059,10 @@ function openEditAttachmentModal(id){
           </select>
         </div>
         <div class="field" style="margin-bottom:12px;">
+          <label>Neighborhood / Subdivision</label>
+          <input id="editAttNeighborhood" type="text" list="neighborhoodSuggestions" value="${escapeAttr(att.neighborhood || '')}" placeholder="e.g. Ridgeline Estates">
+        </div>
+        <div class="field" style="margin-bottom:12px;">
           <label>Name / Address</label>
           <input id="editAttName" type="text" value="${escapeAttr(att.name)}">
         </div>
@@ -3045,19 +3077,22 @@ function openEditAttachmentModal(id){
 
         <div class="field" style="margin-bottom:4px; padding-top:12px; border-top:1px solid var(--border);">
           <label>PDF File</label>
-          ${!att.link ? `
-            <div class="att-row" id="mainPdfCard" style="cursor:pointer; margin:8px 0 10px;">
-              <div class="att-icon">
+          ${hasMainFile ? `
+            <div class="att-row" style="margin:8px 0 10px;">
+              <div class="att-icon" id="mainPdfCard" style="cursor:pointer;">
                 <svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M3.5 1.5h6l3 3v10a1 1 0 0 1-1 1h-8a1 1 0 0 1-1-1v-12a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.3"/><path d="M9 1.5v3h3" stroke="currentColor" stroke-width="1.3"/></svg>
               </div>
-              <div class="att-info">
+              <div class="att-info" id="mainPdfCardInfo" style="cursor:pointer;">
                 <div class="att-name">${escapeAttr(att.name)}.pdf</div>
                 <div class="att-meta">${fmtBytes(att.sizeBytes)}${att.storagePath ? '' : ' · stored locally'} — click to view</div>
+              </div>
+              <div class="att-actions">
+                <button class="btn btn-sm btn-danger" id="btnRemoveMainPdf" type="button">Remove</button>
               </div>
             </div>
           ` : `<div style="font-size:12px; color:var(--gray); margin:8px 0 10px;">${currentFileLabel}</div>`}
           <div id="editAttFileLabel" style="font-size:11.5px; color:var(--good); margin-bottom:8px;"></div>
-          <button class="btn btn-sm" id="btnChooseEditAttFile" type="button">Choose New PDF to Replace It</button>
+          <button class="btn btn-sm" id="btnChooseEditAttFile" type="button">Add PDF</button>
           <input type="file" id="editAttFileInput" class="file-input" accept="application/pdf">
         </div>
 
@@ -3110,6 +3145,10 @@ function openEditAttachmentModal(id){
   document.getElementById('modalOverlay').addEventListener('click', (e) => { if (e.target.id === 'modalOverlay') closeModal(); });
   const mainPdfCard = document.getElementById('mainPdfCard');
   if (mainPdfCard) mainPdfCard.addEventListener('click', () => viewAttachment(att));
+  const mainPdfCardInfo = document.getElementById('mainPdfCardInfo');
+  if (mainPdfCardInfo) mainPdfCardInfo.addEventListener('click', () => viewAttachment(att));
+  const btnRemoveMainPdf = document.getElementById('btnRemoveMainPdf');
+  if (btnRemoveMainPdf) btnRemoveMainPdf.addEventListener('click', () => removeMainPdf(id));
   document.getElementById('btnChooseSupportingDoc').addEventListener('click', () => document.getElementById('supportingDocFileInput').click());
   document.getElementById('supportingDocFileInput').addEventListener('change', e => {
     if (!e.target.files.length) return;
@@ -3138,6 +3177,30 @@ function openEditAttachmentModal(id){
   document.getElementById('modalSaveAttEdit').addEventListener('click', () => saveAttachmentEdits(id, () => pendingReplacementFile));
 }
 
+// Removes just the main PDF file, independent of adding a new one — so you can clear it out
+// without being forced into an immediate replace-in-the-same-step flow.
+async function removeMainPdf(id){
+  const att = attachmentsCache.find(a => String(a.id) === String(id));
+  if (!att) return;
+  if (!confirm('Remove the attached PDF? This can\'t be undone.')) return;
+
+  if (att.source === 'remote' && sbClient){
+    if (att.storagePath) await sbClient.storage.from(ATTACHMENTS_BUCKET).remove([att.storagePath]);
+    const { error } = await sbClient.from(ATTACHMENTS_TABLE).update({ storage_path: null, size_bytes: 0 }).eq('id', id);
+    if (error){ alert('Could not remove file: ' + error.message); return; }
+  } else {
+    const proj = current();
+    const localAtt = proj.attachments.find(a => a.id === id);
+    if (localAtt){
+      localAtt.fileDataUrl = '';
+      localAtt.sizeBytes = 0;
+      saveAppStateDebounced();
+    }
+  }
+  renderAttachments();
+  openEditAttachmentModal(id);
+}
+
 async function saveAttachmentEdits(id, getReplacementFile){
   const proj = current();
   const att = attachmentsCache.find(a => String(a.id) === String(id));
@@ -3148,6 +3211,7 @@ async function saveAttachmentEdits(id, getReplacementFile){
 
   const updates = {
     category: document.getElementById('editAttCategory').value,
+    neighborhood: document.getElementById('editAttNeighborhood').value.trim(),
     name: document.getElementById('editAttName').value.trim() || att.name,
     notes: document.getElementById('editAttNotes').value.trim(),
     link: document.getElementById('editAttLink').value.trim()
@@ -3188,7 +3252,7 @@ async function saveAttachmentEdits(id, getReplacementFile){
     }
 
     if (isSharedRow){
-      const remotePayload = { category: updates.category, name: updates.name, notes: updates.notes, link: updates.link || null };
+      const remotePayload = { category: updates.category, neighborhood: updates.neighborhood, name: updates.name, notes: updates.notes, link: updates.link || null };
       if (updates.storage_path){ remotePayload.storage_path = updates.storage_path; remotePayload.size_bytes = updates.size_bytes; }
       const { error } = await sbClient.from(ATTACHMENTS_TABLE).update(remotePayload).eq('id', id);
       if (error) throw error;
@@ -3341,6 +3405,8 @@ const ATT_STATUS_GROUPS = [
   { key: 'rejected', label: 'Rejected' }
 ];
 
+let attStatusFilter = 'all';
+
 async function renderAttachments(){
   const proj = current();
   if (!proj) return;
@@ -3362,6 +3428,17 @@ async function renderAttachments(){
 
   updateAttStorageStatus(nameKey);
 
+  // Keep the neighborhood autocomplete list current, based on whatever's already been used on this project.
+  const neighborhoodNames = [...new Set(attachmentsCache.map(a => (a.neighborhood || '').trim()).filter(Boolean))].sort();
+  const datalist = document.getElementById('neighborhoodSuggestions');
+  if (datalist) datalist.innerHTML = neighborhoodNames.map(n => `<option value="${escapeAttr(n)}">`).join('');
+
+  const statusBadge = (status) => {
+    const s = status || 'review';
+    const label = s === 'approved' ? 'Approved' : s === 'rejected' ? 'Rejected' : 'In Review';
+    return `<span class="att-status-badge ${s}">${label}</span>`;
+  };
+
   const attRowHtml = (att) => {
     const nextActions = {
       review:   `<button class="btn btn-sm" data-att-status="${att.id}" data-status-to="approved">Approve</button><button class="btn btn-sm btn-danger" data-att-status="${att.id}" data-status-to="rejected">Reject</button>`,
@@ -3381,7 +3458,7 @@ async function renderAttachments(){
       <div class="att-row">
         <div class="att-icon" data-att-open-details="${att.id}" style="cursor:pointer;">${linkIcon}</div>
         <div class="att-info" data-att-open-details="${att.id}" style="cursor:pointer;">
-          <div class="att-name">${escapeAttr(att.name)}</div>
+          <div class="att-name">${escapeAttr(att.name)} ${statusBadge(att.status)}</div>
           <div class="att-meta">${metaBits.join(' · ')}</div>
         </div>
         <label class="att-include-toggle">
@@ -3398,35 +3475,55 @@ async function renderAttachments(){
     `;
   };
 
-  const renderGroup = (containerId, category, emptyText) => {
-    const container = document.getElementById(containerId);
-    const items = attachmentsCache.filter(a => a.category === category);
-    if (!items.length){
-      container.innerHTML = `<div class="att-empty">${emptyText}</div>`;
-      return;
-    }
-    container.innerHTML = ATT_STATUS_GROUPS.map(g => {
-      const groupKey = `${category}_${g.key}`;
-      const groupItems = items.filter(a => (a.status || 'review') === g.key);
-      const isCollapsed = !!proj.compsGroupCollapsed[groupKey];
-      return `
-        <div class="att-status-group">
-          <div class="att-status-head" data-att-group-toggle="${groupKey}">
-            <span class="caret">${isCollapsed ? '&#9654;' : '&#9660;'}</span>
-            <span class="att-status-name">${g.label}</span>
-            <span class="att-status-count">${groupItems.length}</span>
-          </div>
-          ${isCollapsed ? '' : (groupItems.length
-            ? `<div class="att-status-body">${groupItems.map(attRowHtml).join('')}</div>`
-            : `<div class="att-status-body"><div class="att-empty">Nothing here.</div></div>`)}
-        </div>
-      `;
-    }).join('');
-  };
+  const container = document.getElementById('compsListByNeighborhood');
+  const filtered = attStatusFilter === 'all'
+    ? attachmentsCache
+    : attachmentsCache.filter(a => (a.status || 'review') === attStatusFilter);
 
-  renderGroup('compsListComp', 'comp', 'No comps attached yet.');
-  renderGroup('compsListLot', 'lot', 'No potential lots attached yet.');
-  renderGlobalNotifyBar();
+  if (!attachmentsCache.length){
+    container.innerHTML = `<div class="att-empty">No comps or lots attached yet.</div>`;
+    return;
+  }
+  if (!filtered.length){
+    container.innerHTML = `<div class="att-empty">Nothing matches that filter.</div>`;
+    return;
+  }
+
+  // Group by neighborhood first (blank/unset goes into a catch-all "Unassigned" group at the end),
+  // then split each neighborhood into Comps and Lots so it's always clear what's what.
+  const byNeighborhood = {};
+  filtered.forEach(a => {
+    const key = (a.neighborhood || '').trim() || 'Unassigned';
+    (byNeighborhood[key] = byNeighborhood[key] || []).push(a);
+  });
+  const neighborhoodKeys = Object.keys(byNeighborhood).sort((a, b) => {
+    if (a === 'Unassigned') return 1;
+    if (b === 'Unassigned') return -1;
+    return a.localeCompare(b);
+  });
+
+  container.innerHTML = neighborhoodKeys.map(nb => {
+    const items = byNeighborhood[nb];
+    const groupKey = `neighborhood_${nb}`;
+    const isCollapsed = !!proj.compsGroupCollapsed[groupKey];
+    const comps = items.filter(a => a.category === 'comp');
+    const lots = items.filter(a => a.category === 'lot');
+    return `
+      <div class="neighborhood-group">
+        <div class="neighborhood-head" data-att-group-toggle="${groupKey}">
+          <span class="caret">${isCollapsed ? '&#9654;' : '&#9660;'}</span>
+          <span class="nb-name">${escapeAttr(nb)}</span>
+          <span class="nb-count">${items.length}</span>
+        </div>
+        ${isCollapsed ? '' : `
+          <div class="neighborhood-body">
+            ${comps.length ? `<div class="nb-category-label">Comps (Comparable Sales) — ${comps.length}</div>${comps.map(attRowHtml).join('')}` : ''}
+            ${lots.length ? `<div class="nb-category-label">Potential Lots — ${lots.length}</div>${lots.map(attRowHtml).join('')}` : ''}
+          </div>
+        `}
+      </div>
+    `;
+  }).join('');
 }
 
 function attachCompsEvents(){
@@ -3444,6 +3541,14 @@ function attachCompsEvents(){
   });
   document.getElementById('btnAddAttLink').addEventListener('click', () => addAttachmentLink());
   document.getElementById('attLinkInput').addEventListener('keydown', e => { if (e.key === 'Enter') addAttachmentLink(); });
+
+  document.getElementById('attStatusFilter').addEventListener('click', (e) => {
+    const tab = e.target.closest('[data-att-status-filter]');
+    if (!tab) return;
+    attStatusFilter = tab.dataset.attStatusFilter;
+    document.querySelectorAll('#attStatusFilter .dash-filter-tab').forEach(t => t.classList.toggle('active', t === tab));
+    renderAttachments();
+  });
 
   const compsView = document.getElementById('compsView');
   compsView.addEventListener('click', e => {
