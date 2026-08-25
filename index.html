@@ -3186,14 +3186,6 @@ function openEditAttachmentModal(id){
           <label>Notes</label>
           <textarea id="editAttNotes" style="width:100%; min-height:70px; padding:9px 11px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:13.5px; background:var(--bg); color:var(--ink); resize:vertical;" placeholder="Optional — sale date, condition, etc.">${escapeAttr(att.notes || '')}</textarea>
         </div>
-        <div class="grid-info" style="margin-bottom:16px;">
-          <div class="field"><label>Square Footage</label><input id="editAttSqft" type="number" min="0" step="1" value="${escapeAttr(att.sqft || '')}"></div>
-          <div class="field"><label>Lot Size (acres)</label><input id="editAttLotSizeAcres" type="number" min="0" step="0.01" value="${escapeAttr(att.lotSizeAcres || '')}"></div>
-          <div class="field"><label>Sale / Asking Price ($)</label><input id="editAttSalePrice" type="number" min="0" step="1000" value="${escapeAttr(att.salePrice || '')}"></div>
-          <div class="field"><label>Bedrooms</label><input id="editAttBedrooms" type="number" min="0" step="1" value="${escapeAttr(att.bedrooms || '')}"></div>
-          <div class="field"><label>Bathrooms</label><input id="editAttBathrooms" type="number" min="0" step="0.5" value="${escapeAttr(att.bathrooms || '')}"></div>
-          <div class="field"><label>Garage Bays</label><input id="editAttGarageBays" type="number" min="0" step="1" value="${escapeAttr(att.garageBays || '')}"></div>
-        </div>
         <div class="field" style="margin-bottom:16px;">
           <label>Link</label>
           <input id="editAttLink" type="url" value="${escapeAttr(att.link || '')}" placeholder="https://... (optional — MLS, Zillow, Google Drive, etc.)">
@@ -3350,17 +3342,18 @@ async function saveAttachmentEdits(id){
   const saveBtn = document.getElementById('modalSaveAttEdit');
   if (saveBtn){ saveBtn.disabled = true; saveBtn.textContent = 'Saving...'; }
 
+  const specVal = (id, existing) => { const el = document.getElementById(id); return el ? el.value.trim() : existing; };
   const updates = {
     category: document.getElementById('editAttCategory').value,
     neighborhood: getResolvedNeighborhood('editAttNeighborhoodSelect', 'editAttNeighborhoodNew'),
     name: document.getElementById('editAttName').value.trim() || att.name,
     notes: document.getElementById('editAttNotes').value.trim(),
-    sqft: document.getElementById('editAttSqft').value.trim(),
-    lotSizeAcres: document.getElementById('editAttLotSizeAcres').value.trim(),
-    salePrice: document.getElementById('editAttSalePrice').value.trim(),
-    bedrooms: document.getElementById('editAttBedrooms').value.trim(),
-    bathrooms: document.getElementById('editAttBathrooms').value.trim(),
-    garageBays: document.getElementById('editAttGarageBays').value.trim(),
+    sqft: specVal('editAttSqft', att.sqft),
+    lotSizeAcres: specVal('editAttLotSizeAcres', att.lotSizeAcres),
+    salePrice: specVal('editAttSalePrice', att.salePrice),
+    bedrooms: specVal('editAttBedrooms', att.bedrooms),
+    bathrooms: specVal('editAttBathrooms', att.bathrooms),
+    garageBays: specVal('editAttGarageBays', att.garageBays),
     link: document.getElementById('editAttLink').value.trim()
   };
   const backsLotSelect = document.getElementById('editAttBacksLot');
