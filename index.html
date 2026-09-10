@@ -140,6 +140,19 @@ h1,h2,h3,h4{font-family:var(--app-font); font-weight:700; letter-spacing:-0.01em
 .icon-btn.starred{color:var(--gold-deep);}
 .icon-btn.starred:hover{background:var(--active-bg);}
 
+/* ---------- Shortlist cards ---------- */
+.shortlist-card{background:var(--white); border:1px solid var(--border); border-radius:12px; padding:18px 20px; box-shadow:var(--shadow); display:flex; flex-direction:column;}
+.shortlist-card-head{display:flex; align-items:flex-start; justify-content:space-between; gap:10px;}
+.shortlist-card-name{font-size:15px; font-weight:800; color:var(--ink); letter-spacing:-0.01em; line-height:1.3;}
+.shortlist-card-nb{font-size:11.5px; color:var(--gray); margin-top:3px;}
+.shortlist-card-notes{font-size:12.5px; color:var(--gray); line-height:1.5; white-space:pre-wrap; word-break:break-word; background:var(--bg); border-radius:8px; padding:10px 12px; max-height:140px; overflow-y:auto;}
+.shortlist-card-comps{margin-top:12px;}
+.shortlist-card-label{font-size:10px; text-transform:uppercase; letter-spacing:0.05em; color:var(--gray-light); font-weight:700; margin-bottom:6px;}
+.linked-comp-chip{display:inline-block; font-size:11px; font-weight:600; color:var(--gray); background:var(--bg); border:1px solid var(--border); border-radius:20px; padding:3px 10px; margin:0 6px 6px 0; cursor:pointer;}
+.linked-comp-chip:hover{background:var(--active-bg);}
+.shortlist-card-actions{display:flex; gap:8px; margin-top:14px; padding-top:14px; border-top:1px solid var(--border);}
+.shortlist-card-actions .btn{flex:1;}
+
 /* Tri-state status control — replaces the old badge + separate Approve/Reject buttons with one
    cohesive, premium-feeling segmented pill */
 .status-segmented{display:flex; align-items:center; background:var(--bg); border-radius:20px; padding:3px; gap:2px; flex-shrink:0;}
@@ -3548,9 +3561,15 @@ async function setAttachmentShortlist(id, shortlisted){
   const proj = current();
   const att = attachmentsCache.find(a => String(a.id) === String(id));
   if (!att || att.category !== 'lot') return; // shortlist is for highly-considered purchases — lots only, comps are just reference data
-  att.shortlisted = shortlisted;
+  att.shortlisted = shortlisted; // optimistic — reverted below if the save actually fails
   if (att.source === 'remote' && sbClient){
-    await sbClient.from(ATTACHMENTS_TABLE).update({ shortlisted }).eq('id', id);
+    const { error } = await sbClient.from(ATTACHMENTS_TABLE).update({ shortlisted }).eq('id', id);
+    if (error){
+      att.shortlisted = !shortlisted; // undo the optimistic flip so the star doesn't lie about what's actually saved
+      alert('Could not save shortlist: ' + error.message + '\n\nIf this mentions a missing "shortlisted" column, run the setup SQL in your Supabase project to add it.');
+      renderAttachments();
+      return;
+    }
   } else {
     const localAtt = proj.attachments.find(a => a.id === id);
     if (localAtt){ localAtt.shortlisted = shortlisted; saveAppStateDebounced(); }
@@ -3941,26 +3960,39 @@ async function openCompareModal(){
 function openShortlistModal(){
   const items = attachmentsCache.filter(a => a.shortlisted && a.category === 'lot');
 
-  const rowHtml = (att) => {
+  const cardHtml = (att) => {
     const s = att.status || 'review';
     const statusOptions = [['review','Review'],['approved','Approved'],['pursuing','Pursuing — Offer'],['rejected','Rejected']];
     const activeClass = { review: 'active-review', approved: 'active-approved', pursuing: 'active-pursuing', rejected: 'active-rejected' };
+    const linkedComps = (att.linkedCompIds || []).map(cid => attachmentsCache.find(a => String(a.id) === String(cid))).filter(Boolean);
     return `
-      <div class="att-row">
-        <button class="icon-btn starred" data-shortlist-remove="${att.id}" title="Remove from shortlist">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.6l1.9 4 4.4.6-3.2 3.1.75 4.4L8 11.6l-3.85 2.1.75-4.4L1.7 6.2l4.4-.6Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
-        </button>
-        <div class="att-info" data-att-open-details="${att.id}" style="cursor:pointer;">
-          <div class="att-name">${escapeAttr(att.name)}${att.neighborhood ? ` <span style="font-weight:500; color:var(--gray); font-size:11px;">— ${escapeAttr(att.neighborhood)}</span>` : ''}</div>
-          <div class="att-meta">${att.notes ? escapeAttr(att.notes) : 'No notes yet'}</div>
-        </div>
-        <div class="status-segmented">
-          ${statusOptions.map(([val,label]) => `<button class="status-seg ${s===val?activeClass[val]:''}" data-shortlist-status="${att.id}" data-status-to="${val}">${label}</button>`).join('')}
-        </div>
-        <div class="att-actions">
-          <button class="icon-btn" data-shortlist-view="${att.id}" title="${att.link ? 'Open Link' : 'View'}">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M1.3 8s2.4-4.5 6.7-4.5S14.7 8 14.7 8s-2.4 4.5-6.7 4.5S1.3 8 1.3 8Z" stroke="currentColor" stroke-width="1.3"/><circle cx="8" cy="8" r="2" stroke="currentColor" stroke-width="1.3"/></svg>
+      <div class="shortlist-card">
+        <div class="shortlist-card-head">
+          <div>
+            <div class="shortlist-card-name">${escapeAttr(att.name)}</div>
+            ${att.neighborhood ? `<div class="shortlist-card-nb">${escapeAttr(att.neighborhood)}</div>` : ''}
+          </div>
+          <button class="icon-btn starred" data-shortlist-remove="${att.id}" title="Remove from shortlist">
+            <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.6l1.9 4 4.4.6-3.2 3.1.75 4.4L8 11.6l-3.85 2.1.75-4.4L1.7 6.2l4.4-.6Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
           </button>
+        </div>
+
+        <div class="status-segmented" style="width:100%; margin:14px 0;">
+          ${statusOptions.map(([val,label]) => `<button class="status-seg ${s===val?activeClass[val]:''}" style="flex:1;" data-shortlist-status="${att.id}" data-status-to="${val}">${label}</button>`).join('')}
+        </div>
+
+        <div class="shortlist-card-notes">${att.notes ? escapeAttr(att.notes) : 'No notes yet.'}</div>
+
+        ${linkedComps.length ? `
+          <div class="shortlist-card-comps">
+            <div class="shortlist-card-label">Backed by ${linkedComps.length} comp${linkedComps.length===1?'':'s'}</div>
+            ${linkedComps.map(c => `<span class="linked-comp-chip" data-shortlist-view-comp="${c.id}">${escapeAttr(c.name)}</span>`).join('')}
+          </div>
+        ` : ''}
+
+        <div class="shortlist-card-actions">
+          <button class="btn btn-sm" data-shortlist-view="${att.id}">${att.link ? 'Open Link' : 'View PDF'}</button>
+          <button class="btn btn-sm" data-shortlist-edit="${att.id}">Full Details</button>
         </div>
       </div>
     `;
@@ -3969,13 +4001,13 @@ function openShortlistModal(){
   const root = document.getElementById('modalRoot');
   root.innerHTML = `
     <div class="modal-overlay" id="modalOverlay">
-      <div class="modal modal-lg">
-        <h3>&#9733; Shortlist — ${items.length} Highly Considered Lot${items.length===1?'':'s'}</h3>
-        <p style="font-size:12px; color:var(--gray); margin:-8px 0 14px;">Star any potential lot to pull it in here — built for pulling up on a shared screen during a team meeting, without scrolling through everything else. Comps aren't shortlisted, since they're reference data, not purchases.</p>
-        <div class="modal-scroll-body">
-          ${items.length ? items.map(rowHtml).join('') : `<p style="font-size:13px; color:var(--gray-light); font-style:italic;">No lots shortlisted yet — click the star icon on any potential lot to add it here.</p>`}
+      <div class="modal" style="width:95vw; max-width:1500px; height:90vh; max-height:90vh; display:flex; flex-direction:column;">
+        <h3 style="flex-shrink:0;">&#9733; Shortlist — ${items.length} Highly Considered Lot${items.length===1?'':'s'}</h3>
+        <p style="font-size:12px; color:var(--gray); margin:-6px 0 4px; flex-shrink:0;">Star any potential lot to pull it in here — built for pulling up on a shared screen during a team meeting. Comps aren't shortlisted, since they're reference data, not purchases.</p>
+        <div style="flex:1; min-height:0; overflow-y:auto; margin-top:10px; display:grid; grid-template-columns:repeat(auto-fill, minmax(360px, 1fr)); gap:16px; align-content:start;">
+          ${items.length ? items.map(cardHtml).join('') : `<p style="font-size:13px; color:var(--gray-light); font-style:italic; grid-column:1/-1;">No lots shortlisted yet — click the star icon on any potential lot to add it here.</p>`}
         </div>
-        <div class="modal-actions">
+        <div class="modal-actions" style="flex-shrink:0;">
           <button class="btn" id="modalCancel">Close</button>
         </div>
       </div>
@@ -3985,8 +4017,11 @@ function openShortlistModal(){
   document.getElementById('modalCancel').addEventListener('click', closeModal);
   document.getElementById('modalOverlay').addEventListener('click', (e) => { if (e.target.id === 'modalOverlay') closeModal(); });
 
-  root.querySelectorAll('[data-att-open-details]').forEach(el => {
-    el.addEventListener('click', () => openEditAttachmentModal(el.dataset.attOpenDetails));
+  root.querySelectorAll('[data-shortlist-edit]').forEach(btn => {
+    btn.addEventListener('click', () => openEditAttachmentModal(btn.dataset.shortlistEdit));
+  });
+  root.querySelectorAll('[data-shortlist-view-comp]').forEach(el => {
+    el.addEventListener('click', () => openEditAttachmentModal(el.dataset.shortlistViewComp));
   });
   root.querySelectorAll('[data-shortlist-view]').forEach(btn => {
     btn.addEventListener('click', () => {
