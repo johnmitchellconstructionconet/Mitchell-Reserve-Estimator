@@ -3309,20 +3309,39 @@ function openEditAttachmentModal(id){
           <label>Comments &amp; Questions</label>
           <p style="font-size:11.5px; color:var(--gray); margin:2px 0 10px;">Ask a question, flag something you need clarified, or @mention a teammate. Unresolved comments show a badge on this comp/lot until they're marked resolved.</p>
           <div id="commentsList" style="margin-bottom:10px;">
-            ${(att.comments || []).length ? (att.comments || []).slice().sort((a,b) => b.createdAt - a.createdAt).map(c => `
-              <div class="comment-item ${c.resolved ? 'resolved' : ''}">
-                <div class="comment-item-head">
-                  <span class="comment-author">${escapeAttr(c.author)}</span>
-                  ${c.mention ? `<span class="comment-mention">@${escapeAttr(c.mention)}</span>` : ''}
-                  <span class="comment-date">${new Date(c.createdAt).toLocaleString()}</span>
+            ${(() => {
+              const all = att.comments || [];
+              const topLevel = all.filter(c => !c.parentId).slice().sort((a,b) => b.createdAt - a.createdAt);
+              if (!topLevel.length) return `<div class="att-empty">No comments yet.</div>`;
+              const commentHtml = (c, isReply) => `
+                <div class="comment-item ${c.resolved ? 'resolved' : ''}" style="${isReply ? 'margin-left:28px; background:var(--white);' : ''}">
+                  <div class="comment-item-head">
+                    <span class="comment-author">${escapeAttr(c.author)}</span>
+                    ${c.mention ? `<span class="comment-mention">@${escapeAttr(c.mention)}</span>` : ''}
+                    <span class="comment-date">${new Date(c.createdAt).toLocaleString()}</span>
+                  </div>
+                  <div class="comment-text">${escapeAttr(c.text)}</div>
+                  <div class="comment-actions">
+                    <button class="btn btn-sm" data-comment-reply="${c.id}">Reply</button>
+                    ${!isReply ? `<button class="btn btn-sm" data-comment-resolve="${c.id}">${c.resolved ? 'Reopen' : 'Mark Resolved'}</button>` : ''}
+                    <button class="btn btn-sm btn-danger" data-comment-delete="${c.id}">Delete</button>
+                  </div>
+                  <div class="reply-form hidden" id="replyForm-${c.id}">
+                    <div style="display:flex; gap:8px; align-items:flex-start; flex-wrap:wrap; margin-top:10px;">
+                      <select class="reply-mention" data-reply-mention-for="${c.id}" style="width:150px;">
+                        <option value="">@ Mention</option>
+                      </select>
+                      <textarea class="reply-text" data-reply-text-for="${c.id}" placeholder="Write a reply..." style="flex:1; min-width:180px; min-height:38px; padding:7px 9px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:12.5px; background:var(--bg); color:var(--ink); resize:vertical;"></textarea>
+                      <button class="btn btn-sm btn-gold" data-post-reply="${c.id}" type="button">Post Reply</button>
+                    </div>
+                  </div>
                 </div>
-                <div class="comment-text">${escapeAttr(c.text)}</div>
-                <div class="comment-actions">
-                  <button class="btn btn-sm" data-comment-resolve="${c.id}">${c.resolved ? 'Reopen' : 'Mark Resolved'}</button>
-                  <button class="btn btn-sm btn-danger" data-comment-delete="${c.id}">Delete</button>
-                </div>
-              </div>
-            `).join('') : `<div class="att-empty">No comments yet.</div>`}
+              `;
+              return topLevel.map(top => {
+                const replies = all.filter(c => String(c.parentId) === String(top.id)).sort((a,b) => a.createdAt - b.createdAt);
+                return commentHtml(top, false) + replies.map(r => commentHtml(r, true)).join('');
+              }).join('');
+            })()}
           </div>
           <div style="display:flex; gap:8px; align-items:flex-start; flex-wrap:wrap;">
             <select id="newCommentMention" style="width:180px;">
@@ -3373,7 +3392,28 @@ function openEditAttachmentModal(id){
     const resolveBtn = e.target.closest('[data-comment-resolve]');
     if (resolveBtn){ toggleCommentResolved(id, resolveBtn.dataset.commentResolve); return; }
     const deleteBtn = e.target.closest('[data-comment-delete]');
-    if (deleteBtn){ deleteComment(id, deleteBtn.dataset.commentDelete); }
+    if (deleteBtn){ deleteComment(id, deleteBtn.dataset.commentDelete); return; }
+    const replyBtn = e.target.closest('[data-comment-reply]');
+    if (replyBtn){
+      const form = document.getElementById(`replyForm-${replyBtn.dataset.commentReply}`);
+      if (form){
+        form.classList.toggle('hidden');
+        if (!form.classList.contains('hidden')){
+          const textarea = form.querySelector('.reply-text');
+          if (textarea) textarea.focus();
+        }
+      }
+      return;
+    }
+    const postReplyBtn = e.target.closest('[data-post-reply]');
+    if (postReplyBtn){
+      const parentId = postReplyBtn.dataset.postReply;
+      const textarea = document.querySelector(`[data-reply-text-for="${parentId}"]`);
+      const mentionSelect = document.querySelector(`[data-reply-mention-for="${parentId}"]`);
+      const text = textarea ? textarea.value.trim() : '';
+      if (!text){ alert('Write a reply first.'); return; }
+      addComment(id, text, mentionSelect ? mentionSelect.value : '', parentId);
+    }
   });
   document.getElementById('btnPostComment').addEventListener('click', () => {
     const textEl = document.getElementById('newCommentText');
@@ -3383,10 +3423,13 @@ function openEditAttachmentModal(id){
     addComment(id, text, mentionEl.value);
   });
   fetchTeamMemberNames().then(members => {
+    if (!members.length) return;
+    const options = members.map(m => `<option value="${escapeAttr(m.name)}">${escapeAttr(m.name)}</option>`).join('');
     const mentionSelect = document.getElementById('newCommentMention');
-    if (!mentionSelect || !members.length) return;
-    mentionSelect.innerHTML = `<option value="">@ Mention (optional)</option>` +
-      members.map(m => `<option value="${escapeAttr(m.name)}">${escapeAttr(m.name)}</option>`).join('');
+    if (mentionSelect) mentionSelect.innerHTML = `<option value="">@ Mention (optional)</option>` + options;
+    document.querySelectorAll('.reply-mention').forEach(sel => {
+      sel.innerHTML = `<option value="">@ Mention</option>` + options;
+    });
   });
   document.getElementById('editAttNeighborhoodSelect').addEventListener('change', e => {
     const newInput = document.getElementById('editAttNeighborhoodNew');
@@ -3530,11 +3573,12 @@ async function persistCommentsArray(att){
   return true;
 }
 
-async function addComment(attId, text, mentionName){
+async function addComment(attId, text, mentionName, parentId){
   const att = attachmentsCache.find(a => String(a.id) === String(attId));
   if (!att || !text.trim()) return;
   const comment = {
     id: Date.now() + Math.random().toString(36).slice(2,7),
+    parentId: parentId || null,
     text: text.trim(),
     mention: mentionName || '',
     author: currentAuthUser ? currentAuthUser.email : 'You',
