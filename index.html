@@ -1698,6 +1698,18 @@ function escapeAttr(s){
   return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
 }
 
+// Clipboard fallback for browsers/contexts where navigator.clipboard isn't available.
+function fallbackCopy(text){
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); } catch (e) { /* clipboard unavailable — nothing more we can do */ }
+  document.body.removeChild(ta);
+}
+
 // ---------- Core calculation engine (operates on a given project object) ----------
 function computeAll(proj){
   const sqft = Number(proj.project.sqft) || 0;
@@ -4002,8 +4014,16 @@ function openShortlistModal(){
   root.innerHTML = `
     <div class="modal-overlay" id="modalOverlay">
       <div class="modal" style="width:95vw; max-width:1500px; height:90vh; max-height:90vh; display:flex; flex-direction:column;">
-        <h3 style="flex-shrink:0;">&#9733; Shortlist — ${items.length} Highly Considered Lot${items.length===1?'':'s'}</h3>
-        <p style="font-size:12px; color:var(--gray); margin:-6px 0 4px; flex-shrink:0;">Star any potential lot to pull it in here — built for pulling up on a shared screen during a team meeting. Comps aren't shortlisted, since they're reference data, not purchases.</p>
+        <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-shrink:0;">
+          <div>
+            <h3 style="margin:0;">&#9733; Shortlist — ${items.length} Highly Considered Lot${items.length===1?'':'s'}</h3>
+            <p style="font-size:12px; color:var(--gray); margin:6px 0 0;">Star any potential lot to pull it in here — built for pulling up on a shared screen during a team meeting. Comps aren't shortlisted, since they're reference data, not purchases.</p>
+          </div>
+          <div style="display:flex; gap:8px; flex-shrink:0;">
+            <button class="btn btn-sm" id="btnCopyShortlistSummary" ${items.length ? '' : 'disabled'}>Copy Plain Text</button>
+            <button class="btn btn-sm btn-gold" id="btnCopyShortlistHtml" ${items.length ? '' : 'disabled'}>Copy Formatted Email</button>
+          </div>
+        </div>
         <div style="flex:1; min-height:0; overflow-y:auto; margin-top:10px; display:grid; grid-template-columns:repeat(auto-fill, minmax(360px, 1fr)); gap:16px; align-content:start;">
           ${items.length ? items.map(cardHtml).join('') : `<p style="font-size:13px; color:var(--gray-light); font-style:italic; grid-column:1/-1;">No lots shortlisted yet — click the star icon on any potential lot to add it here.</p>`}
         </div>
@@ -4016,6 +4036,111 @@ function openShortlistModal(){
 
   document.getElementById('modalCancel').addEventListener('click', closeModal);
   document.getElementById('modalOverlay').addEventListener('click', (e) => { if (e.target.id === 'modalOverlay') closeModal(); });
+
+  // Builds a plain-text summary of the shortlisted lots — for copying into an email, Slack message,
+  // or wherever it needs to go, so the person writing offers sees exactly which lots and why.
+  const buildShortlistSummaryText = () => {
+    const proj = current();
+    const statusLabel = { review: 'In Review', approved: 'Approved', pursuing: 'Pursuing — Offer', rejected: 'Rejected' };
+    const lines = [
+      `Shortlisted Lots${proj && proj.project.name ? ' — ' + proj.project.name : ''}`,
+      `${items.length} lot${items.length===1?'':'s'} we're interested in and would like to discuss further:`,
+      ''
+    ];
+    items.forEach((att, i) => {
+      lines.push(`${i+1}. ${att.name}${att.neighborhood ? ' — ' + att.neighborhood : ''}`);
+      lines.push(`   Status: ${statusLabel[att.status] || 'In Review'}`);
+      if (att.notes) lines.push(`   Notes: ${att.notes}`);
+      lines.push('');
+    });
+    return lines.join('\n');
+  };
+
+  // A polished, branded HTML version of the same summary — every style is inline (email clients
+  // strip <style> blocks and external CSS), using table-based layout for the most reliable
+  // rendering once it's pasted into Gmail, Outlook, or Apple Mail. Paste this straight into a
+  // compose window and the formatting carries over, since we copy it as real text/html, not text.
+  const buildShortlistSummaryHtml = () => {
+    const proj = current();
+    const accent = COMPANY.accentColor || '#A8874F';
+    const ink = COMPANY.inkColor || '#1A1A1A';
+    const statusColors = {
+      review:   { bg: '#F0EEEA', fg: '#6B6558', label: 'In Review' },
+      approved: { bg: '#E4ECE4', fg: '#4C6B4F', label: 'Approved' },
+      pursuing: { bg: '#F3EADD', fg: accent,    label: 'Pursuing — Offer' },
+      rejected: { bg: '#F5DFDD', fg: '#A6473C', label: 'Rejected' }
+    };
+    const font = "font-family:Georgia,'Times New Roman',serif;";
+    const rows = items.map((att) => {
+      const sc = statusColors[att.status] || statusColors.review;
+      return `
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:14px; border-collapse:collapse;">
+          <tr>
+            <td width="4" style="background:${accent}; border-radius:3px 0 0 3px;"></td>
+            <td style="background:#FAF9F6; border:1px solid #E5E1D8; border-left:none; border-radius:0 8px 8px 0; padding:16px 18px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="${font} font-size:16px; font-weight:bold; color:${ink}; padding-bottom:3px;">${escapeAttr(att.name)}</td>
+                  <td align="right" style="white-space:nowrap;">
+                    <span style="display:inline-block; ${font} font-size:10px; font-weight:bold; text-transform:uppercase; letter-spacing:0.05em; color:${sc.fg}; background:${sc.bg}; border-radius:20px; padding:4px 10px;">${sc.label}</span>
+                  </td>
+                </tr>
+                ${att.neighborhood ? `<tr><td colspan="2" style="${font} font-size:12.5px; color:#8A8578; padding-bottom:8px;">${escapeAttr(att.neighborhood)}</td></tr>` : ''}
+                ${att.notes ? `<tr><td colspan="2" style="${font} font-size:12.5px; color:#5C574C; line-height:1.5; padding-top:4px;">${escapeAttr(att.notes)}</td></tr>` : ''}
+              </table>
+            </td>
+          </tr>
+        </table>
+      `;
+    }).join('');
+
+    return `
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px; ${font}">
+        <tr><td style="padding-bottom:4px;">
+          <div style="${font} font-size:11px; text-transform:uppercase; letter-spacing:0.08em; color:${accent}; font-weight:bold;">${escapeAttr(COMPANY.name || 'Shortlisted Lots')}</div>
+          <div style="${font} font-size:20px; font-weight:bold; color:${ink}; margin-top:4px;">Shortlisted Lots for Discussion</div>
+          ${proj && proj.project.name ? `<div style="${font} font-size:13px; color:#8A8578; margin-top:2px;">${escapeAttr(proj.project.name)}</div>` : ''}
+          <div style="${font} font-size:13px; color:#5C574C; margin:12px 0 18px;">Here ${items.length===1?'is the lot':'are the '+items.length+' lots'} we're interested in and would like to discuss further:</div>
+        </td></tr>
+        <tr><td>${rows}</td></tr>
+      </table>
+    `;
+  };
+
+  const doCopy = async (text, html, btn) => {
+    const showCopied = () => {
+      const original = btn.textContent;
+      btn.textContent = 'Copied!';
+      setTimeout(() => { btn.textContent = original; }, 1500);
+    };
+    if (html && navigator.clipboard && window.ClipboardItem){
+      try {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            'text/plain': new Blob([text], { type: 'text/plain' }),
+            'text/html': new Blob([html], { type: 'text/html' })
+          })
+        ]);
+        showCopied();
+        return;
+      } catch (e){ console.warn('Rich clipboard copy failed, falling back to plain text:', e); }
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(showCopied).catch(() => { fallbackCopy(text); showCopied(); });
+    } else {
+      fallbackCopy(text); showCopied();
+    }
+  };
+
+  const btnCopySummary = document.getElementById('btnCopyShortlistSummary');
+  if (btnCopySummary){
+    btnCopySummary.addEventListener('click', () => doCopy(buildShortlistSummaryText(), null, btnCopySummary));
+  }
+
+  const btnCopyHtml = document.getElementById('btnCopyShortlistHtml');
+  if (btnCopyHtml){
+    btnCopyHtml.addEventListener('click', () => doCopy(buildShortlistSummaryText(), buildShortlistSummaryHtml(), btnCopyHtml));
+  }
 
   root.querySelectorAll('[data-shortlist-edit]').forEach(btn => {
     btn.addEventListener('click', () => openEditAttachmentModal(btn.dataset.shortlistEdit));
