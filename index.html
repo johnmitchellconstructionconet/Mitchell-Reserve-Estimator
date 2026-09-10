@@ -149,6 +149,7 @@ h1,h2,h3,h4{font-family:var(--app-font); font-weight:700; letter-spacing:-0.01em
 .status-seg:hover{color:var(--gray);}
 .status-seg.active-review{background:var(--white); color:var(--gray); box-shadow:0 1px 2px rgba(26,26,26,0.08);}
 .status-seg.active-approved{background:var(--good); color:var(--white); box-shadow:0 1px 2px rgba(26,26,26,0.08);}
+.status-seg.active-pursuing{background:var(--gold-deep); color:var(--white); box-shadow:0 1px 2px rgba(26,26,26,0.08);}
 .status-seg.active-rejected{background:var(--attn-text); color:var(--white); box-shadow:0 1px 2px rgba(26,26,26,0.08);}
 
 /* Tolerance / spec-match chips */
@@ -3145,7 +3146,7 @@ function openEditAttachmentModal(id){
   if (!att) return;
 
   const detailBits = [
-    `Status: ${att.status === 'approved' ? 'Approved' : att.status === 'rejected' ? 'Rejected' : 'In Review'}`,
+    `Status: ${att.status === 'approved' ? 'Approved' : att.status === 'pursuing' ? 'Pursuing — Offer' : att.status === 'rejected' ? 'Rejected' : 'In Review'}`,
     `Added ${new Date(att.uploadedAt).toLocaleDateString()}`,
     att.source === 'remote' ? 'Shared with your team' : (att.storagePath ? 'Cloud storage' : 'Local to this browser')
   ];
@@ -3623,10 +3624,16 @@ async function renderAttachments(){
 
   const statusSegmented = (att) => {
     const s = att.status || 'review';
+    // Lots get a 4th state — "Pursuing" is a distinct step from just "Approved": it means you've
+    // decided to move forward and write an offer, not just that the lot looks like a good candidate.
+    const pursuingSeg = att.category === 'lot'
+      ? `<button class="status-seg ${s==='pursuing'?'active-pursuing':''}" data-att-status="${att.id}" data-status-to="pursuing">Pursuing &mdash; Offer</button>`
+      : '';
     return `
       <div class="status-segmented">
         <button class="status-seg ${s==='review'?'active-review':''}" data-att-status="${att.id}" data-status-to="review">Review</button>
         <button class="status-seg ${s==='approved'?'active-approved':''}" data-att-status="${att.id}" data-status-to="approved">Approved</button>
+        ${pursuingSeg}
         <button class="status-seg ${s==='rejected'?'active-rejected':''}" data-att-status="${att.id}" data-status-to="rejected">Rejected</button>
       </div>
     `;
