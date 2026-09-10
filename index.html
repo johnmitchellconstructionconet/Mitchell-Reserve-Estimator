@@ -171,6 +171,18 @@ h1,h2,h3,h4{font-family:var(--app-font); font-weight:700; letter-spacing:-0.01em
 .spec-chip{font-size:9.5px; font-weight:700; padding:2px 7px; border-radius:20px; white-space:nowrap; display:inline-flex; align-items:center; gap:3px;}
 .spec-chip.ok{background:#E4ECE4; color:var(--good);}
 .spec-chip.off{background:var(--attn-bg); color:var(--attn-text);}
+.comment-badge{display:inline-flex; align-items:center; gap:4px; background:var(--attn-bg); color:var(--attn-text); border:none; border-radius:20px; padding:2px 8px; font-size:10.5px; font-weight:700; cursor:pointer; vertical-align:middle;}
+.comment-badge:hover{filter:brightness(0.95);}
+
+/* Comments & @mentions */
+.comment-item{background:var(--bg); border:1px solid var(--border); border-radius:10px; padding:10px 12px; margin-bottom:8px;}
+.comment-item.resolved{opacity:0.55;}
+.comment-item-head{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:4px;}
+.comment-author{font-size:11.5px; font-weight:700; color:var(--ink);}
+.comment-mention{font-size:11px; font-weight:700; color:var(--gold-deep); background:var(--active-bg); border-radius:12px; padding:1px 8px;}
+.comment-date{font-size:10.5px; color:var(--gray-light); margin-left:auto;}
+.comment-text{font-size:13px; color:var(--ink); line-height:1.45; white-space:pre-wrap; word-break:break-word;}
+.comment-actions{display:flex; gap:6px; margin-top:8px;}
 .att-compare-toggle{display:flex; align-items:center; gap:5px; flex-shrink:0; font-size:10px; color:var(--gray-light); cursor:pointer; white-space:nowrap;}
 
 /* Comps nested under their lot */
@@ -1407,6 +1419,7 @@ function hydrateProject(proj){
     if (a.garageBays === undefined) a.garageBays = '';
     if (a.linkedCompIds === undefined) a.linkedCompIds = [];
     if (a.shortlisted === undefined) a.shortlisted = false;
+    if (a.comments === undefined) a.comments = [];
   });
   if (proj.compsGroupCollapsed === undefined) proj.compsGroupCollapsed = {};
   if (proj.compsTolerances === undefined) proj.compsTolerances = { targetSqft: '', sqftTolerance: '', targetLotSize: '', lotSizeTolerance: '', locked: false };
@@ -3006,6 +3019,7 @@ function normalizeRemoteAttachment(row){
     storagePath: row.storage_path || '', sizeBytes: row.size_bytes || 0, status: row.status || 'review',
     includeInBankPdf: row.include_in_bank_pdf !== false, uploadedAt: new Date(row.created_at).getTime(),
     documents: Array.isArray(row.documents) ? row.documents : [],
+    comments: Array.isArray(row.comments) ? row.comments : [],
     source: 'remote'
   };
 }
@@ -3057,7 +3071,7 @@ async function uploadAttachment(file){
     alert(`This file is ${fmtBytes(file.size)}. Without shared Supabase Storage active, local files are capped at ${fmtBytes(MAX_LOCAL_ATTACHMENT_BYTES)}. Connect Supabase (and name this project) for larger files and team-wide visibility.`);
     return;
   }
-  const record = Object.assign({ id: proj.nextAttachmentId++, name, category, notes, neighborhood, uploadedAt: Date.now(), sizeBytes: file.size, includeInBankPdf: false, status: 'review', documents: [], linkedCompIds: [], shortlisted: false }, specs);
+  const record = Object.assign({ id: proj.nextAttachmentId++, name, category, notes, neighborhood, uploadedAt: Date.now(), sizeBytes: file.size, includeInBankPdf: false, status: 'review', documents: [], linkedCompIds: [], shortlisted: false, comments: [] }, specs);
   const reader = new FileReader();
   reader.onload = (e) => {
     record.fileDataUrl = e.target.result;
@@ -3093,7 +3107,7 @@ async function addAttachmentLink(){
     return;
   }
 
-  const record = Object.assign({ id: proj.nextAttachmentId++, name, category, notes, neighborhood, link, uploadedAt: Date.now(), includeInBankPdf: false, status: 'review', documents: [], linkedCompIds: [], shortlisted: false }, specs);
+  const record = Object.assign({ id: proj.nextAttachmentId++, name, category, notes, neighborhood, link, uploadedAt: Date.now(), includeInBankPdf: false, status: 'review', documents: [], linkedCompIds: [], shortlisted: false, comments: [] }, specs);
   proj.attachments.push(record);
   document.getElementById('attLinkInput').value = '';
   finishAttachmentUpload();
@@ -3290,6 +3304,35 @@ function openEditAttachmentModal(id){
             </div>
           </div>
         </div>
+
+        <div class="field" style="margin-bottom:4px; padding-top:16px; border-top:1px solid var(--border);">
+          <label>Comments &amp; Questions</label>
+          <p style="font-size:11.5px; color:var(--gray); margin:2px 0 10px;">Ask a question, flag something you need clarified, or @mention a teammate. Unresolved comments show a badge on this comp/lot until they're marked resolved.</p>
+          <div id="commentsList" style="margin-bottom:10px;">
+            ${(att.comments || []).length ? (att.comments || []).slice().sort((a,b) => b.createdAt - a.createdAt).map(c => `
+              <div class="comment-item ${c.resolved ? 'resolved' : ''}">
+                <div class="comment-item-head">
+                  <span class="comment-author">${escapeAttr(c.author)}</span>
+                  ${c.mention ? `<span class="comment-mention">@${escapeAttr(c.mention)}</span>` : ''}
+                  <span class="comment-date">${new Date(c.createdAt).toLocaleString()}</span>
+                </div>
+                <div class="comment-text">${escapeAttr(c.text)}</div>
+                <div class="comment-actions">
+                  <button class="btn btn-sm" data-comment-resolve="${c.id}">${c.resolved ? 'Reopen' : 'Mark Resolved'}</button>
+                  <button class="btn btn-sm btn-danger" data-comment-delete="${c.id}">Delete</button>
+                </div>
+              </div>
+            `).join('') : `<div class="att-empty">No comments yet.</div>`}
+          </div>
+          <div style="display:flex; gap:8px; align-items:flex-start; flex-wrap:wrap;">
+            <select id="newCommentMention" style="width:180px;">
+              <option value="">@ Mention (optional)</option>
+            </select>
+            <textarea id="newCommentText" placeholder="Ask a question or leave a note..." style="flex:1; min-width:220px; min-height:44px; padding:8px 10px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:13px; background:var(--bg); color:var(--ink); resize:vertical;"></textarea>
+            <button class="btn btn-sm btn-gold" id="btnPostComment" type="button">Post</button>
+          </div>
+        </div>
+
         </div>
 
         <div class="modal-actions">
@@ -3325,6 +3368,25 @@ function openEditAttachmentModal(id){
       if (removeBtn.dataset.docRemove === 'main') removeMainPdf(id);
       else removeSupportingDocument(id, removeBtn.dataset.docRemove);
     }
+  });
+  document.getElementById('commentsList').addEventListener('click', e => {
+    const resolveBtn = e.target.closest('[data-comment-resolve]');
+    if (resolveBtn){ toggleCommentResolved(id, resolveBtn.dataset.commentResolve); return; }
+    const deleteBtn = e.target.closest('[data-comment-delete]');
+    if (deleteBtn){ deleteComment(id, deleteBtn.dataset.commentDelete); }
+  });
+  document.getElementById('btnPostComment').addEventListener('click', () => {
+    const textEl = document.getElementById('newCommentText');
+    const mentionEl = document.getElementById('newCommentMention');
+    const text = textEl.value.trim();
+    if (!text){ alert('Write a comment first.'); return; }
+    addComment(id, text, mentionEl.value);
+  });
+  fetchTeamMemberNames().then(members => {
+    const mentionSelect = document.getElementById('newCommentMention');
+    if (!mentionSelect || !members.length) return;
+    mentionSelect.innerHTML = `<option value="">@ Mention (optional)</option>` +
+      members.map(m => `<option value="${escapeAttr(m.name)}">${escapeAttr(m.name)}</option>`).join('');
   });
   document.getElementById('editAttNeighborhoodSelect').addEventListener('change', e => {
     const newInput = document.getElementById('editAttNeighborhoodNew');
@@ -3450,6 +3512,72 @@ async function persistDocumentsArray(att){
     if (localAtt){ localAtt.documents = att.documents; saveAppStateDebounced(); }
   }
   return true;
+}
+
+// ---------- Comments & @mentions on a comp/lot ----------
+async function persistCommentsArray(att){
+  if (att.source === 'remote' && sbClient){
+    const { error } = await sbClient.from(ATTACHMENTS_TABLE).update({ comments: att.comments }).eq('id', att.id);
+    if (error){
+      alert('Could not save comment: ' + error.message + '\n\nIf this mentions a missing "comments" column, run the setup SQL in your Supabase project to add it.');
+      return false;
+    }
+  } else {
+    const proj = current();
+    const localAtt = proj.attachments.find(a => a.id === att.id);
+    if (localAtt){ localAtt.comments = att.comments; saveAppStateDebounced(); }
+  }
+  return true;
+}
+
+async function addComment(attId, text, mentionName){
+  const att = attachmentsCache.find(a => String(a.id) === String(attId));
+  if (!att || !text.trim()) return;
+  const comment = {
+    id: Date.now() + Math.random().toString(36).slice(2,7),
+    text: text.trim(),
+    mention: mentionName || '',
+    author: currentAuthUser ? currentAuthUser.email : 'You',
+    resolved: false,
+    createdAt: Date.now()
+  };
+  att.comments = [...(att.comments || []), comment];
+  const ok = await persistCommentsArray(att);
+  if (ok){
+    if (sbClient) await refreshPendingApprovalCounts();
+    renderAttachments();
+    openEditAttachmentModal(attId);
+  }
+}
+
+async function toggleCommentResolved(attId, commentId){
+  const att = attachmentsCache.find(a => String(a.id) === String(attId));
+  if (!att) return;
+  const c = (att.comments || []).find(c => String(c.id) === String(commentId));
+  if (!c) return;
+  c.resolved = !c.resolved;
+  const ok = await persistCommentsArray(att);
+  if (ok){ renderAttachments(); openEditAttachmentModal(attId); }
+}
+
+async function deleteComment(attId, commentId){
+  const att = attachmentsCache.find(a => String(a.id) === String(attId));
+  if (!att) return;
+  if (!confirm('Delete this comment?')) return;
+  att.comments = (att.comments || []).filter(c => String(c.id) !== String(commentId));
+  const ok = await persistCommentsArray(att);
+  if (ok){ renderAttachments(); openEditAttachmentModal(attId); }
+}
+
+// Pulls the team directory (name/email) for the @mention picker, if Supabase + the team_members
+// table are set up. Returns [] otherwise — the mention field still works as free text either way.
+async function fetchTeamMemberNames(){
+  if (!sbClient) return [];
+  try {
+    const { data, error } = await sbClient.from('team_members').select('name, email').order('name', { ascending: true });
+    if (error) return [];
+    return data || [];
+  } catch (e) { return []; }
 }
 
 async function addSupportingDocumentFile(attId, file, opts){
@@ -3707,6 +3835,13 @@ async function renderAttachments(){
     const linkBadge = att.link
       ? `<span style="position:absolute; bottom:-3px; right:-3px; width:15px; height:15px; border-radius:50%; background:var(--white); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; color:var(--gold-deep);"><svg width="8" height="8" viewBox="0 0 16 16" fill="none"><path d="M6.5 9.5 9.5 6.5M6 4.5 4.2 6.3a2.5 2.5 0 0 0 3.5 3.5L9.5 8M10 11.5l1.8-1.8a2.5 2.5 0 0 0-3.5-3.5L6.5 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span>`
       : '';
+    const unresolvedCount = (att.comments || []).filter(c => !c.resolved).length;
+    const commentBadge = unresolvedCount
+      ? `<button class="comment-badge" data-att-open-details="${att.id}" title="${unresolvedCount} unresolved comment${unresolvedCount===1?'':'s'}">
+           <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M2 3.5h12a1 1 0 0 1 1 1V10a1 1 0 0 1-1 1H6l-3 3v-3H2a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+           ${unresolvedCount}
+         </button>`
+      : '';
     const metaBits = [];
     if (att.notes) metaBits.push(escapeAttr(att.notes));
     if (att.link) metaBits.push('Link'); else metaBits.push(fmtBytes(att.sizeBytes));
@@ -3733,7 +3868,7 @@ async function renderAttachments(){
         </label>
         <div class="att-icon" data-att-open-details="${att.id}" style="cursor:pointer; position:relative; overflow:visible;">${categoryIcon}${linkBadge}</div>
         <div class="att-info" data-att-open-details="${att.id}" style="cursor:pointer;">
-          <div class="att-name">${escapeAttr(att.name)}</div>
+          <div class="att-name">${escapeAttr(att.name)} ${commentBadge}</div>
           <div class="att-meta">${metaBits.join(' · ')}</div>
           ${chips ? `<div style="margin-top:5px; display:flex; gap:5px; flex-wrap:wrap;">${chips}</div>` : ''}
         </div>
