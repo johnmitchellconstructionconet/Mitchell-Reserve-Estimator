@@ -137,6 +137,8 @@ h1,h2,h3,h4{font-family:var(--app-font); font-weight:700; letter-spacing:-0.01em
 }
 .icon-btn:hover{background:var(--active-bg); color:var(--ink);}
 .icon-btn.danger:hover{background:var(--attn-bg); color:var(--attn-text);}
+.icon-btn.starred{color:var(--gold-deep);}
+.icon-btn.starred:hover{background:var(--active-bg);}
 
 /* Tri-state status control — replaces the old badge + separate Approve/Reject buttons with one
    cohesive, premium-feeling segmented pill */
@@ -730,7 +732,10 @@ tr.subtotal-row td{
 
   <div style="display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:20px; flex-wrap:wrap;">
     <p id="attStorageStatus" style="font-size:11.5px; color:var(--gray); margin:0;"></p>
-    <button class="btn btn-gold" id="btnOpenAddAttModal">+ Add Comp or Lot</button>
+    <div style="display:flex; gap:10px;">
+      <button class="btn" id="btnOpenShortlistModal">&#9733; Shortlist of Lots <span id="shortlistCountBadge"></span></button>
+      <button class="btn btn-gold" id="btnOpenAddAttModal">+ Add Comp or Lot</button>
+    </div>
   </div>
 
   <div class="panel" style="margin-bottom:20px;">
@@ -1388,6 +1393,7 @@ function hydrateProject(proj){
     if (a.bathrooms === undefined) a.bathrooms = '';
     if (a.garageBays === undefined) a.garageBays = '';
     if (a.linkedCompIds === undefined) a.linkedCompIds = [];
+    if (a.shortlisted === undefined) a.shortlisted = false;
   });
   if (proj.compsGroupCollapsed === undefined) proj.compsGroupCollapsed = {};
   if (proj.compsTolerances === undefined) proj.compsTolerances = { targetSqft: '', sqftTolerance: '', targetLotSize: '', lotSizeTolerance: '', locked: false };
@@ -2971,6 +2977,7 @@ function normalizeRemoteAttachment(row){
     sqft: row.sqft || '', lotSizeAcres: row.lot_size_acres || '', salePrice: row.sale_price || '',
     bedrooms: row.bedrooms || '', bathrooms: row.bathrooms || '', garageBays: row.garage_bays || '',
     linkedCompIds: Array.isArray(row.linked_comp_ids) ? row.linked_comp_ids : [],
+    shortlisted: row.shortlisted === true,
     storagePath: row.storage_path || '', sizeBytes: row.size_bytes || 0, status: row.status || 'review',
     includeInBankPdf: row.include_in_bank_pdf !== false, uploadedAt: new Date(row.created_at).getTime(),
     documents: Array.isArray(row.documents) ? row.documents : [],
@@ -3025,7 +3032,7 @@ async function uploadAttachment(file){
     alert(`This file is ${fmtBytes(file.size)}. Without shared Supabase Storage active, local files are capped at ${fmtBytes(MAX_LOCAL_ATTACHMENT_BYTES)}. Connect Supabase (and name this project) for larger files and team-wide visibility.`);
     return;
   }
-  const record = Object.assign({ id: proj.nextAttachmentId++, name, category, notes, neighborhood, uploadedAt: Date.now(), sizeBytes: file.size, includeInBankPdf: false, status: 'review', documents: [], linkedCompIds: [] }, specs);
+  const record = Object.assign({ id: proj.nextAttachmentId++, name, category, notes, neighborhood, uploadedAt: Date.now(), sizeBytes: file.size, includeInBankPdf: false, status: 'review', documents: [], linkedCompIds: [], shortlisted: false }, specs);
   const reader = new FileReader();
   reader.onload = (e) => {
     record.fileDataUrl = e.target.result;
@@ -3061,7 +3068,7 @@ async function addAttachmentLink(){
     return;
   }
 
-  const record = Object.assign({ id: proj.nextAttachmentId++, name, category, notes, neighborhood, link, uploadedAt: Date.now(), includeInBankPdf: false, status: 'review', documents: [], linkedCompIds: [] }, specs);
+  const record = Object.assign({ id: proj.nextAttachmentId++, name, category, notes, neighborhood, link, uploadedAt: Date.now(), includeInBankPdf: false, status: 'review', documents: [], linkedCompIds: [], shortlisted: false }, specs);
   proj.attachments.push(record);
   document.getElementById('attLinkInput').value = '';
   finishAttachmentUpload();
@@ -3535,6 +3542,22 @@ async function setAttachmentInclude(id, include){
   }
 }
 
+// A quick way to pull the strongest candidates out of the full list for a team discussion, without
+// anyone having to scroll through every comp/lot to find them.
+async function setAttachmentShortlist(id, shortlisted){
+  const proj = current();
+  const att = attachmentsCache.find(a => String(a.id) === String(id));
+  if (!att || att.category !== 'lot') return; // shortlist is for highly-considered purchases — lots only, comps are just reference data
+  att.shortlisted = shortlisted;
+  if (att.source === 'remote' && sbClient){
+    await sbClient.from(ATTACHMENTS_TABLE).update({ shortlisted }).eq('id', id);
+  } else {
+    const localAtt = proj.attachments.find(a => a.id === id);
+    if (localAtt){ localAtt.shortlisted = shortlisted; saveAppStateDebounced(); }
+  }
+  renderAttachments();
+}
+
 const ATT_STATUS_GROUPS = [
   { key: 'review', label: 'In Review' },
   { key: 'approved', label: 'Approved' },
@@ -3565,6 +3588,10 @@ async function renderAttachments(){
   }
 
   updateAttStorageStatus(nameKey);
+
+  const shortlistCount = attachmentsCache.filter(a => a.shortlisted && a.category === 'lot').length;
+  const shortlistBadgeEl = document.getElementById('shortlistCountBadge');
+  if (shortlistBadgeEl) shortlistBadgeEl.textContent = shortlistCount ? `(${shortlistCount})` : '';
 
   // Keep the known-neighborhoods list current, based on whatever's already been used on this project,
   // and refresh the "Add a Comp or Lot" dropdown so previously typed neighborhoods can just be selected.
@@ -3681,6 +3708,11 @@ async function renderAttachments(){
         </div>
         ${statusSegmented(att)}
         <div class="att-actions">
+          ${att.category === 'lot' ? `
+          <button class="icon-btn ${att.shortlisted ? 'starred' : ''}" data-att-shortlist="${att.id}" data-shortlist-to="${att.shortlisted ? '0' : '1'}" title="${att.shortlisted ? 'Remove from shortlist' : 'Add to shortlist — highly considered purchase'}">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="${att.shortlisted ? 'currentColor' : 'none'}"><path d="M8 1.6l1.9 4 4.4.6-3.2 3.1.75 4.4L8 11.6l-3.85 2.1.75-4.4L1.7 6.2l4.4-.6Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
+          </button>
+          ` : ''}
           <button class="icon-btn" data-att-view="${att.id}" title="${att.link ? 'Open Link' : 'View'}">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M1.3 8s2.4-4.5 6.7-4.5S14.7 8 14.7 8s-2.4 4.5-6.7 4.5S1.3 8 1.3 8Z" stroke="currentColor" stroke-width="1.3"/><circle cx="8" cy="8" r="2" stroke="currentColor" stroke-width="1.3"/></svg>
           </button>
@@ -3904,6 +3936,79 @@ async function openCompareModal(){
   renderPanels();
 }
 
+// A condensed, scannable view of just the starred comps/lots — built for pulling up on a shared
+// screen during a team discussion, without anyone scrolling through the full neighborhood-grouped list.
+function openShortlistModal(){
+  const items = attachmentsCache.filter(a => a.shortlisted && a.category === 'lot');
+
+  const rowHtml = (att) => {
+    const s = att.status || 'review';
+    const statusOptions = [['review','Review'],['approved','Approved'],['pursuing','Pursuing — Offer'],['rejected','Rejected']];
+    const activeClass = { review: 'active-review', approved: 'active-approved', pursuing: 'active-pursuing', rejected: 'active-rejected' };
+    return `
+      <div class="att-row">
+        <button class="icon-btn starred" data-shortlist-remove="${att.id}" title="Remove from shortlist">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.6l1.9 4 4.4.6-3.2 3.1.75 4.4L8 11.6l-3.85 2.1.75-4.4L1.7 6.2l4.4-.6Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
+        </button>
+        <div class="att-info" data-att-open-details="${att.id}" style="cursor:pointer;">
+          <div class="att-name">${escapeAttr(att.name)}${att.neighborhood ? ` <span style="font-weight:500; color:var(--gray); font-size:11px;">— ${escapeAttr(att.neighborhood)}</span>` : ''}</div>
+          <div class="att-meta">${att.notes ? escapeAttr(att.notes) : 'No notes yet'}</div>
+        </div>
+        <div class="status-segmented">
+          ${statusOptions.map(([val,label]) => `<button class="status-seg ${s===val?activeClass[val]:''}" data-shortlist-status="${att.id}" data-status-to="${val}">${label}</button>`).join('')}
+        </div>
+        <div class="att-actions">
+          <button class="icon-btn" data-shortlist-view="${att.id}" title="${att.link ? 'Open Link' : 'View'}">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M1.3 8s2.4-4.5 6.7-4.5S14.7 8 14.7 8s-2.4 4.5-6.7 4.5S1.3 8 1.3 8Z" stroke="currentColor" stroke-width="1.3"/><circle cx="8" cy="8" r="2" stroke="currentColor" stroke-width="1.3"/></svg>
+          </button>
+        </div>
+      </div>
+    `;
+  };
+
+  const root = document.getElementById('modalRoot');
+  root.innerHTML = `
+    <div class="modal-overlay" id="modalOverlay">
+      <div class="modal modal-lg">
+        <h3>&#9733; Shortlist — ${items.length} Highly Considered Lot${items.length===1?'':'s'}</h3>
+        <p style="font-size:12px; color:var(--gray); margin:-8px 0 14px;">Star any potential lot to pull it in here — built for pulling up on a shared screen during a team meeting, without scrolling through everything else. Comps aren't shortlisted, since they're reference data, not purchases.</p>
+        <div class="modal-scroll-body">
+          ${items.length ? items.map(rowHtml).join('') : `<p style="font-size:13px; color:var(--gray-light); font-style:italic;">No lots shortlisted yet — click the star icon on any potential lot to add it here.</p>`}
+        </div>
+        <div class="modal-actions">
+          <button class="btn" id="modalCancel">Close</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('modalCancel').addEventListener('click', closeModal);
+  document.getElementById('modalOverlay').addEventListener('click', (e) => { if (e.target.id === 'modalOverlay') closeModal(); });
+
+  root.querySelectorAll('[data-att-open-details]').forEach(el => {
+    el.addEventListener('click', () => openEditAttachmentModal(el.dataset.attOpenDetails));
+  });
+  root.querySelectorAll('[data-shortlist-view]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const att = attachmentsCache.find(a => String(a.id) === String(btn.dataset.shortlistView));
+      if (att) viewAttachment(att);
+    });
+  });
+  root.querySelectorAll('[data-shortlist-remove]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      await setAttachmentShortlist(btn.dataset.shortlistRemove, false);
+      openShortlistModal();
+    });
+  });
+  root.querySelectorAll('[data-shortlist-status]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      await setAttachmentStatus(btn.dataset.shortlistStatus, btn.dataset.statusTo);
+      await renderAttachments(); // make sure attachmentsCache is fully fresh before rebuilding this modal
+      openShortlistModal();
+    });
+  });
+}
+
 // Add Comp or Lot — now a modal instead of a permanent block taking up page space. Stays open after
 // a successful add so you can keep adding more without reopening it.
 function openAddAttachmentModal(){
@@ -3986,6 +4091,7 @@ function openAddAttachmentModal(){
 
 function attachCompsEvents(){
   document.getElementById('btnOpenAddAttModal').addEventListener('click', () => openAddAttachmentModal());
+  document.getElementById('btnOpenShortlistModal').addEventListener('click', () => openShortlistModal());
 
   document.getElementById('attStatusFilter').addEventListener('click', (e) => {
     const tab = e.target.closest('[data-att-status-filter]');
@@ -4037,6 +4143,8 @@ function attachCompsEvents(){
     }
     const statusBtn = e.target.closest('[data-att-status]');
     if (statusBtn){ setAttachmentStatus(statusBtn.dataset.attStatus, statusBtn.dataset.statusTo); return; }
+    const shortlistBtn = e.target.closest('[data-att-shortlist]');
+    if (shortlistBtn){ setAttachmentShortlist(shortlistBtn.dataset.attShortlist, shortlistBtn.dataset.shortlistTo === '1'); return; }
     const viewBtn = e.target.closest('[data-att-view]');
     if (viewBtn){
       const att = attachmentsCache.find(a => String(a.id) === String(viewBtn.dataset.attView));
