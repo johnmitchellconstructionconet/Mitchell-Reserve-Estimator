@@ -1421,6 +1421,7 @@ function hydrateProject(proj){
     if (a.linkedCompIds === undefined) a.linkedCompIds = [];
     if (a.shortlisted === undefined) a.shortlisted = false;
     if (a.comments === undefined) a.comments = [];
+    if (a.lotDocuments === undefined) a.lotDocuments = [];
   });
   if (proj.compsGroupCollapsed === undefined) proj.compsGroupCollapsed = {};
   if (proj.compsTolerances === undefined) proj.compsTolerances = { targetSqft: '', sqftTolerance: '', targetLotSize: '', lotSizeTolerance: '', locked: false };
@@ -3021,6 +3022,7 @@ function normalizeRemoteAttachment(row){
     includeInBankPdf: row.include_in_bank_pdf !== false, uploadedAt: new Date(row.created_at).getTime(),
     documents: Array.isArray(row.documents) ? row.documents : [],
     comments: Array.isArray(row.comments) ? row.comments : [],
+    lotDocuments: Array.isArray(row.lot_documents) ? row.lot_documents : [],
     source: 'remote'
   };
 }
@@ -3072,7 +3074,7 @@ async function uploadAttachment(file){
     alert(`This file is ${fmtBytes(file.size)}. Without shared Supabase Storage active, local files are capped at ${fmtBytes(MAX_LOCAL_ATTACHMENT_BYTES)}. Connect Supabase (and name this project) for larger files and team-wide visibility.`);
     return;
   }
-  const record = Object.assign({ id: proj.nextAttachmentId++, name, category, notes, neighborhood, uploadedAt: Date.now(), sizeBytes: file.size, includeInBankPdf: false, status: 'review', documents: [], linkedCompIds: [], shortlisted: false, comments: [] }, specs);
+  const record = Object.assign({ id: proj.nextAttachmentId++, name, category, notes, neighborhood, uploadedAt: Date.now(), sizeBytes: file.size, includeInBankPdf: false, status: 'review', documents: [], linkedCompIds: [], shortlisted: false, comments: [], lotDocuments: [] }, specs);
   const reader = new FileReader();
   reader.onload = (e) => {
     record.fileDataUrl = e.target.result;
@@ -3108,7 +3110,7 @@ async function addAttachmentLink(){
     return;
   }
 
-  const record = Object.assign({ id: proj.nextAttachmentId++, name, category, notes, neighborhood, link, uploadedAt: Date.now(), includeInBankPdf: false, status: 'review', documents: [], linkedCompIds: [], shortlisted: false, comments: [] }, specs);
+  const record = Object.assign({ id: proj.nextAttachmentId++, name, category, notes, neighborhood, link, uploadedAt: Date.now(), includeInBankPdf: false, status: 'review', documents: [], linkedCompIds: [], shortlisted: false, comments: [], lotDocuments: [] }, specs);
   proj.attachments.push(record);
   document.getElementById('attLinkInput').value = '';
   finishAttachmentUpload();
@@ -3306,6 +3308,45 @@ function openEditAttachmentModal(id){
           </div>
         </div>
 
+        ${att.category === 'lot' ? `
+        <div class="field" style="margin-bottom:4px; padding-top:16px; border-top:1px solid var(--border);">
+          <label>Lot Specifics (Design Requirements, Contracts, etc.)</label>
+          <p style="font-size:11.5px; color:var(--gray); margin:2px 0 10px;">Kept separate from the general PDFs above — deed restrictions, design guidelines, purchase contracts, whatever's specific to actually buying and building on this lot. Add as many as you need.</p>
+          <div id="lotDocsList" style="margin-bottom:10px;">
+            ${(() => {
+              const rows = (att.lotDocuments || []).map(doc => `
+                <div class="att-row" style="padding:9px 12px;">
+                  <div class="att-icon" style="width:28px; height:28px;">
+                    ${doc.link
+                      ? `<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M6.5 9.5 9.5 6.5M6 4.5 4.2 6.3a2.5 2.5 0 0 0 3.5 3.5L9.5 8M10 11.5l1.8-1.8a2.5 2.5 0 0 0-3.5-3.5L6.5 8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>`
+                      : `<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M3.5 1.5h6l3 3v10a1 1 0 0 1-1 1h-8a1 1 0 0 1-1-1v-12a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.3"/><path d="M9 1.5v3h3" stroke="currentColor" stroke-width="1.3"/></svg>`}
+                  </div>
+                  <div class="att-info">
+                    <div class="att-name" style="font-size:12.5px;">${escapeAttr(doc.name)}</div>
+                    <div class="att-meta">${doc.link ? 'Link' : fmtBytes(doc.sizeBytes)} · ${new Date(doc.uploadedAt).toLocaleDateString()}</div>
+                  </div>
+                  <div class="att-actions">
+                    <button class="btn btn-sm" data-lotdoc-view="${doc.id}">${doc.link ? 'Open' : 'View'}</button>
+                    <button class="btn btn-sm btn-danger" data-lotdoc-remove="${doc.id}">Remove</button>
+                  </div>
+                </div>
+              `);
+              return rows.length ? rows.join('') : `<div class="att-empty">Nothing added yet.</div>`;
+            })()}
+          </div>
+          <div style="display:flex; gap:24px; flex-wrap:wrap;">
+            <div>
+              <button class="btn btn-sm" id="btnChooseLotDoc" type="button">+ Add PDF(s)</button>
+              <input type="file" id="lotDocFileInput" class="file-input" accept="application/pdf" multiple>
+            </div>
+            <div style="display:flex; gap:8px; flex:1; min-width:220px;">
+              <input id="lotDocLinkInput" type="url" placeholder="https://... paste a link instead" style="flex:1; padding:7px 9px; border:1px solid var(--border); border-radius:6px; font-size:12.5px; background:var(--bg); color:var(--ink);">
+              <button class="btn btn-sm" id="btnAddLotDocLink" type="button">Add Link</button>
+            </div>
+          </div>
+        </div>
+        ` : ''}
+
         <div class="field" style="margin-bottom:4px; padding-top:16px; border-top:1px solid var(--border);">
           <label>Comments &amp; Questions</label>
           <p style="font-size:11.5px; color:var(--gray); margin:2px 0 10px;">Ask a question, flag something you need clarified, or @mention a teammate. Unresolved comments show a badge on this comp/lot until they're marked resolved.</p>
@@ -3389,6 +3430,29 @@ function openEditAttachmentModal(id){
       else removeSupportingDocument(id, removeBtn.dataset.docRemove);
     }
   });
+  if (att.category === 'lot'){
+    const btnChooseLotDoc = document.getElementById('btnChooseLotDoc');
+    if (btnChooseLotDoc) btnChooseLotDoc.addEventListener('click', () => document.getElementById('lotDocFileInput').click());
+    const lotDocFileInput = document.getElementById('lotDocFileInput');
+    if (lotDocFileInput) lotDocFileInput.addEventListener('change', e => {
+      if (!e.target.files.length) return;
+      addLotDocumentFiles(id, e.target.files);
+    });
+    const btnAddLotDocLink = document.getElementById('btnAddLotDocLink');
+    if (btnAddLotDocLink) btnAddLotDocLink.addEventListener('click', () => {
+      const link = document.getElementById('lotDocLinkInput').value.trim();
+      if (!link){ alert('Paste a link first.'); return; }
+      if (!/^https?:\/\//i.test(link)){ alert('Links should start with http:// or https://'); return; }
+      addLotDocumentLink(id, link);
+    });
+    const lotDocsList = document.getElementById('lotDocsList');
+    if (lotDocsList) lotDocsList.addEventListener('click', e => {
+      const viewBtn = e.target.closest('[data-lotdoc-view]');
+      if (viewBtn){ viewLotDocument(id, viewBtn.dataset.lotdocView); return; }
+      const removeBtn = e.target.closest('[data-lotdoc-remove]');
+      if (removeBtn){ removeLotDocument(id, removeBtn.dataset.lotdocRemove); }
+    });
+  }
   document.getElementById('commentsList').addEventListener('click', e => {
     const resolveBtn = e.target.closest('[data-comment-resolve]');
     if (resolveBtn){ toggleCommentResolved(id, resolveBtn.dataset.commentResolve); return; }
@@ -3712,6 +3776,108 @@ async function viewSupportingDocument(attId, docId){
   }
 }
 
+// ---------- Lot Specifics (design requirements, contracts, etc.) — lots only, kept fully separate
+// from the general "Attached PDFs" list so the two purposes don't get mixed together. Same
+// multi-file, never-replaces-anything behavior as the main PDF list above.
+async function persistLotDocumentsArray(att){
+  if (att.source === 'remote' && sbClient){
+    const { error } = await sbClient.from(ATTACHMENTS_TABLE).update({ lot_documents: att.lotDocuments }).eq('id', att.id);
+    if (error){
+      alert('Could not save lot specifics: ' + error.message + '\n\nIf this mentions a missing "lot_documents" column, run the setup SQL in your Supabase project to add it.');
+      return false;
+    }
+  } else {
+    const proj = current();
+    const localAtt = proj.attachments.find(a => a.id === att.id);
+    if (localAtt){ localAtt.lotDocuments = att.lotDocuments; saveAppStateDebounced(); }
+  }
+  return true;
+}
+
+async function addLotDocumentFile(attId, file, opts){
+  const silent = opts && opts.silent;
+  const att = attachmentsCache.find(a => String(a.id) === String(attId));
+  if (!att || !file) return;
+  const proj = current();
+  const nameKey = projectNameKey(proj);
+  const doc = { id: Date.now() + Math.random().toString(36).slice(2,7), name: file.name, sizeBytes: file.size, uploadedAt: Date.now() };
+
+  if (att.source === 'remote' && sbClient){
+    const safeName = file.name.replace(/[^a-z0-9.\-_]+/gi, '_');
+    const path = `${(nameKey||'project').replace(/[^a-z0-9.\-_]+/gi,'_')}/${attId}-lotdocs/${Date.now()}-${safeName}`;
+    const { error } = await sbClient.storage.from(ATTACHMENTS_BUCKET).upload(path, file, { contentType: 'application/pdf' });
+    if (error){ alert(`Upload failed for "${file.name}": ` + error.message); return; }
+    doc.storagePath = path;
+  } else {
+    if (file.size > MAX_LOCAL_ATTACHMENT_BYTES){
+      alert(`"${file.name}" is ${fmtBytes(file.size)} — local storage is capped at ${fmtBytes(MAX_LOCAL_ATTACHMENT_BYTES)} per file.`);
+      return;
+    }
+    doc.fileDataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = e => resolve(e.target.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  att.lotDocuments = [...(att.lotDocuments || []), doc];
+  await persistLotDocumentsArray(att);
+  if (!silent){
+    renderAttachments();
+    openEditAttachmentModal(attId);
+  }
+}
+
+async function addLotDocumentFiles(attId, fileList){
+  const files = Array.from(fileList || []).filter(f => f.type === 'application/pdf');
+  if (!files.length){ alert('Please choose PDF files.'); return; }
+  const btn = document.getElementById('btnChooseLotDoc');
+  for (let i = 0; i < files.length; i++){
+    if (btn) btn.textContent = `Uploading ${i+1} of ${files.length}...`;
+    await addLotDocumentFile(attId, files[i], { silent: true });
+  }
+  renderAttachments();
+  openEditAttachmentModal(attId);
+}
+
+async function addLotDocumentLink(attId, link, name){
+  const att = attachmentsCache.find(a => String(a.id) === String(attId));
+  if (!att || !link) return;
+  const doc = { id: Date.now() + Math.random().toString(36).slice(2,7), name: name || link, link, uploadedAt: Date.now() };
+  att.lotDocuments = [...(att.lotDocuments || []), doc];
+  await persistLotDocumentsArray(att);
+  renderAttachments();
+  openEditAttachmentModal(attId);
+}
+
+async function removeLotDocument(attId, docId){
+  const att = attachmentsCache.find(a => String(a.id) === String(attId));
+  if (!att) return;
+  const doc = (att.lotDocuments || []).find(d => String(d.id) === String(docId));
+  if (!doc) return;
+  if (!confirm(`Remove "${doc.name}"?`)) return;
+  if (doc.storagePath && sbClient) await sbClient.storage.from(ATTACHMENTS_BUCKET).remove([doc.storagePath]);
+  att.lotDocuments = (att.lotDocuments || []).filter(d => String(d.id) !== String(docId));
+  await persistLotDocumentsArray(att);
+  renderAttachments();
+  openEditAttachmentModal(attId);
+}
+
+async function viewLotDocument(attId, docId){
+  const att = attachmentsCache.find(a => String(a.id) === String(attId));
+  const doc = att && (att.lotDocuments || []).find(d => String(d.id) === String(docId));
+  if (!doc) return;
+  if (doc.link){ window.open(doc.link, '_blank'); return; }
+  if (doc.storagePath && sbClient){
+    const { data, error } = await sbClient.storage.from(ATTACHMENTS_BUCKET).createSignedUrl(doc.storagePath, 3600);
+    if (error){ alert('Could not open file: ' + error.message); return; }
+    window.open(data.signedUrl, '_blank');
+  } else if (doc.fileDataUrl){
+    openPdfFromDataUrl(doc.fileDataUrl);
+  }
+}
+
 async function setAttachmentStatus(id, status){
   const proj = current();
   const att = attachmentsCache.find(a => String(a.id) === String(id));
@@ -3893,6 +4059,7 @@ async function renderAttachments(){
     metaBits.push(new Date(att.uploadedAt).toLocaleDateString());
     metaBits.push(att.source === 'remote' ? 'Shared' : (att.storagePath ? 'Cloud' : 'Local'));
     if ((att.documents || []).length) metaBits.push(`${att.documents.length} supporting doc${att.documents.length===1?'':'s'}`);
+    if (att.category === 'lot' && (att.lotDocuments || []).length) metaBits.push(`${att.lotDocuments.length} lot spec doc${att.lotDocuments.length===1?'':'s'}`);
 
     const chips = [
       specChip('Sqft', att.sqft, effectiveTargetSqft, sqftTolerance, ''),
